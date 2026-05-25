@@ -9,7 +9,122 @@ import base64
 from datetime import datetime
 from functools import wraps
 import hashlib
+import os
+import sqlite3
 
+# Функция для создания базы данных и таблиц
+def init_database():
+    conn = sqlite3.connect('survey.db')
+    cur = conn.cursor()
+    
+    # Таблица пользователей
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            plain_password TEXT,
+            role TEXT DEFAULT 'student',
+            full_name TEXT,
+            is_active INTEGER DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Таблица тестов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS tests (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            unique_code TEXT UNIQUE NOT NULL,
+            created_by_user_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_editable INTEGER DEFAULT 1,
+            FOREIGN KEY (created_by_user_id) REFERENCES users (id)
+        )
+    ''')
+    
+    # Таблица вопросов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS test_questions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_id INTEGER NOT NULL,
+            question_text TEXT NOT NULL,
+            question_type TEXT DEFAULT 'choice',
+            options TEXT,
+            order_index INTEGER DEFAULT 0,
+            correct_answer TEXT,
+            points INTEGER DEFAULT 1,
+            FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Таблица результатов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS test_results (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_id INTEGER NOT NULL,
+            user_id INTEGER NOT NULL,
+            score INTEGER DEFAULT 0,
+            max_score INTEGER DEFAULT 0,
+            completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            answers_json TEXT,
+            FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE,
+            FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Таблица детальных ответов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS test_answers_detail (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            result_id INTEGER NOT NULL,
+            question_id INTEGER NOT NULL,
+            user_answer TEXT,
+            is_correct INTEGER DEFAULT 0,
+            points_earned INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (result_id) REFERENCES test_results (id) ON DELETE CASCADE,
+            FOREIGN KEY (question_id) REFERENCES test_questions (id) ON DELETE CASCADE
+        )
+    ''')
+    
+    # Индексы
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_tests_code ON tests(unique_code)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_results_user ON test_results(user_id)')
+    
+    # Создаём тестового администратора (пароль: admin123)
+    import hashlib
+    admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'admin', 'admin@survey.com', ?, 'admin123', 'admin', 'Администратор', 1
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
+    ''', (admin_hash,))
+    
+    # Создаём тестового преподавателя (пароль: teacher123)
+    teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'teacher', 'teacher@survey.com', ?, 'teacher123', 'teacher', 'Преподаватель', 1
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
+    ''', (teacher_hash,))
+    
+    # Создаём тестового студента (пароль: student123)
+    student_hash = hashlib.sha256("student123".encode()).hexdigest()
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'student', 'student@survey.com', ?, 'student123', 'student', 'Студент', 1
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'student')
+    ''', (student_hash,))
+    
+    conn.commit()
+    conn.close()
+    print("✅ База данных инициализирована!")
+
+# Вызываем инициализацию при старте
+init_database()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
@@ -745,14 +860,11 @@ def my_results():
 
 # Запуск
 if __name__ == '__main__':
-    # Инициализируем базу данных
-    init_db()
-    
+    # Инициализация уже произошла вверху файла
     print("=" * 50)
     print("🚀 Server: http://localhost:3000")
-    print("📁 Database: SQLite (survey.db)")
-    print("👨‍💼 Admin login: admin / admin123")
-    print("👨‍🏫 Teacher login: teacher / teacher123")
-    print("👨‍🎓 Student login: student / student123")
+    print("👨‍💼 Admin: admin / admin123")
+    print("👨‍🏫 Teacher: teacher / teacher123")
+    print("👨‍🎓 Student: student / student123")
     print("=" * 50)
-    app.run(debug=True, port=3000, host='0.0.0.0', use_reloader=False)
+    app.run(debug=True, port=3000, host='0.0.0.0')
