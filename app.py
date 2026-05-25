@@ -227,42 +227,66 @@ def result_detail(result_id):
 
 @app.route('/register', methods=['POST'])
 def register():
+    print("=== REGISTER REQUEST RECEIVED ===")
     try:
-        data = request.get_json(force=True, silent=True) or {}
+        data = request.get_json()
+        print(f"Data received: {data}")
+        
+        if not data:
+            print("No JSON data")
+            return jsonify({'error': 'Нет данных'}), 400
+        
         username = data.get('username')
         email = data.get('email')
         password = data.get('password')
         full_name = data.get('full_name', '')
         role = data.get('role', 'student')
         
+        print(f"Username: {username}, Email: {email}, Role: {role}")
+        
         if not all([username, email, password]):
-            return jsonify({'error': 'Заполните все обязательные поля!'}), 400
+            print("Missing fields")
+            return jsonify({'error': 'Заполните все поля!'}), 400
         
         conn = get_db_connection()
         if not conn:
-            return jsonify({'error': 'Ошибка подключения к БД'}), 500
+            print("Database connection failed")
+            return jsonify({'error': 'Ошибка БД'}), 500
         
         cur = conn.cursor()
+        
+        # Проверка существования
         cur.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
         if cur.fetchone():
+            print("User already exists")
             cur.close()
             conn.close()
             return jsonify({'error': 'Пользователь уже существует!'}), 400
         
-        password_hash = hash_password(password)
+        # Хеширование пароля
+        password_hash = hashlib.sha256(password.encode()).hexdigest()
+        print(f"Password hash created")
+        
+        # Вставка
         cur.execute("""
-            INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
-            VALUES (%s, %s, %s, %s, %s, TRUE, %s) RETURNING id
-        """, (username, email, password_hash, role, full_name, password))
+            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+            VALUES (%s, %s, %s, %s, %s, %s, TRUE)
+            RETURNING id
+        """, (username, email, password_hash, password, role, full_name))
         
         user_id = cur.fetchone()[0]
         conn.commit()
+        print(f"User created with id: {user_id}")
+        
         cur.close()
         conn.close()
         
         return jsonify({'success': True, 'message': 'Регистрация успешна!', 'user_id': user_id})
+    
     except Exception as e:
-        logger.error(f"Register Error: {e}\n{traceback.format_exc()}")
+        print(f"REGISTER ERROR: {e}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
 @app.route('/login', methods=['POST'])
