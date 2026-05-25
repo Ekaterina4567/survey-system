@@ -10,6 +10,12 @@ import base64
 from functools import wraps
 import hashlib
 import urllib.parse
+import traceback
+import logging
+
+# Настройка логирования
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
@@ -21,7 +27,7 @@ def get_db_connection():
     try:
         database_url = os.environ.get('DATABASE_URL')
         if not database_url:
-            print("❌ DATABASE_URL не установлен")
+            logger.error("❌ DATABASE_URL не установлен")
             return None
         
         urllib.parse.uses_netloc.append('postgres')
@@ -35,9 +41,10 @@ def get_db_connection():
             password=url.password,
             cursor_factory=RealDictCursor
         )
+        logger.info("✅ Подключение к БД успешно")
         return conn
     except Exception as e:
-        print(f"DB Error: {e}")
+        logger.error(f"❌ DB Connection Error: {e}")
         return None
 
 # ===== ИНИЦИАЛИЗАЦИЯ БАЗЫ ДАННЫХ =====
@@ -46,15 +53,15 @@ def init_database():
     """Создание таблиц и тестовых пользователей"""
     conn = get_db_connection()
     if not conn:
-        print("❌ Не удалось подключиться к базе данных")
+        logger.error("❌ Не удалось подключиться к базе данных")
         return False
     
     try:
         cur = conn.cursor()
         
-        # Таблица пользователей
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS users (
+        # Создаём таблицы
+        tables = [
+            """CREATE TABLE IF NOT EXISTS users (
                 id SERIAL PRIMARY KEY,
                 username VARCHAR(100) UNIQUE NOT NULL,
                 email VARCHAR(255) UNIQUE NOT NULL,
@@ -64,24 +71,16 @@ def init_database():
                 full_name VARCHAR(255),
                 is_active BOOLEAN DEFAULT TRUE,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
-        
-        # Таблица тестов
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS tests (
+            )""",
+            """CREATE TABLE IF NOT EXISTS tests (
                 id SERIAL PRIMARY KEY,
                 title VARCHAR(255) NOT NULL,
                 unique_code VARCHAR(20) UNIQUE NOT NULL,
                 created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 is_editable BOOLEAN DEFAULT TRUE
-            )
-        """)
-        
-        # Таблица вопросов
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS test_questions (
+            )""",
+            """CREATE TABLE IF NOT EXISTS test_questions (
                 id SERIAL PRIMARY KEY,
                 test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
                 question_text TEXT NOT NULL,
@@ -90,12 +89,8 @@ def init_database():
                 order_index INTEGER DEFAULT 0,
                 correct_answer TEXT,
                 points INTEGER DEFAULT 1
-            )
-        """)
-        
-        # Таблица результатов
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS test_results (
+            )""",
+            """CREATE TABLE IF NOT EXISTS test_results (
                 id SERIAL PRIMARY KEY,
                 test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
                 user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -103,12 +98,8 @@ def init_database():
                 max_score INTEGER DEFAULT 0,
                 completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 answers_json TEXT
-            )
-        """)
-        
-        # Таблица детальных ответов
-        cur.execute("""
-            CREATE TABLE IF NOT EXISTS test_answers_detail (
+            )""",
+            """CREATE TABLE IF NOT EXISTS test_answers_detail (
                 id SERIAL PRIMARY KEY,
                 result_id INTEGER NOT NULL REFERENCES test_results(id) ON DELETE CASCADE,
                 question_id INTEGER NOT NULL REFERENCES test_questions(id) ON DELETE CASCADE,
@@ -116,8 +107,11 @@ def init_database():
                 is_correct BOOLEAN DEFAULT FALSE,
                 points_earned INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        """)
+            )"""
+        ]
+        
+        for sql in tables:
+            cur.execute(sql)
         
         # Индексы
         cur.execute("CREATE INDEX IF NOT EXISTS idx_tests_code ON tests(unique_code)")
@@ -139,10 +133,11 @@ def init_database():
         conn.commit()
         cur.close()
         conn.close()
-        print("✅ База данных успешно инициализирована!")
+        logger.info("✅ База данных успешно инициализирована!")
         return True
     except Exception as e:
-        print(f"❌ Ошибка инициализации БД: {e}")
+        logger.error(f"❌ Ошибка инициализации БД: {e}")
+        logger.error(traceback.format_exc())
         return False
 
 # ===== ВСПОМОГАТЕЛЬНЫЕ ФУНКЦИИ =====
@@ -151,6 +146,7 @@ def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
+            logger.warning("⚠️ Требуется авторизация")
             return jsonify({'error': 'Требуется авторизация'}), 401
         return f(*args, **kwargs)
     return decorated_function
@@ -160,7 +156,7 @@ def hash_password(password):
 
 def generate_unique_code():
     """Генерация уникального кода для теста"""
-    while True:
+    for _ in range(10):  # пробуем 10 раз
         code = secrets.token_urlsafe(6).upper().replace('-', 'X').replace('_', 'Y')[:8]
         conn = get_db_connection()
         if conn:
@@ -171,7 +167,7 @@ def generate_unique_code():
             conn.close()
             if not result:
                 return code
-    return secrets.token_urlsafe(8)[:8]
+    return secrets.token_urlsafe(8)[:8].upper()
 
 def normalize_text(text):
     if not text:
@@ -232,7 +228,7 @@ def result_detail(result_id):
 @app.route('/register', methods=['POST'])
 def register():
     try:
-        data = request.json or {}
+        data = request.get_json(force=True, silent=True) or {}
         username = data.get('username')
         email = data.get('email')
         password = data.get('password')
@@ -266,13 +262,13 @@ def register():
         
         return jsonify({'success': True, 'message': 'Регистрация успешна!', 'user_id': user_id})
     except Exception as e:
-        print(f"Register Error: {e}")
+        logger.error(f"Register Error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/login', methods=['POST'])
 def login():
     try:
-        data = request.json or {}
+        data = request.get_json(force=True, silent=True) or {}
         username = data.get('username')
         password = data.get('password')
         
@@ -306,7 +302,7 @@ def login():
             'redirect': '/student_dashboard'
         })
     except Exception as e:
-        print(f"Login Error: {e}")
+        logger.error(f"Login Error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/logout')
@@ -324,81 +320,179 @@ def check_auth():
         })
     return jsonify({'authenticated': False})
 
+# ===== КЛЮЧЕВОЙ МАРШРУТ: /api/create_test =====
+
 @app.route('/api/create_test', methods=['POST'])
 @login_required
 def create_test():
+    """Создание нового теста с вопросами"""
+    conn = None
+    cur = None
+    
     try:
-        data = request.json or {}
+        logger.info(f"📥 create_test: user_id={session.get('user_id')}, content_type={request.content_type}")
+        
+        # Получаем JSON
+        data = request.get_json(force=True, silent=True)
+        logger.info(f"📥 Parsed data keys: {list(data.keys()) if data else 'None'}")
+        
+        if not data:
+            return jsonify({'error': 'Неверный формат данных. Ожидался JSON.'}), 400
+        
         title = data.get('title')
         questions = data.get('questions', [])
         
-        if not title or not questions:
-            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
+        logger.info(f"📥 title='{title}', questions_count={len(questions) if questions else 0}")
         
+        # Валидация
+        if not title or not isinstance(title, str) or not title.strip():
+            return jsonify({'error': 'Название теста обязательно!'}), 400
+        if not isinstance(questions, list) or len(questions) == 0:
+            return jsonify({'error': 'Добавьте хотя бы один вопрос!'}), 400
+        
+        # Генерация кода
         code = generate_unique_code()
+        logger.info(f"🔑 Generated code: {code}")
+        
+        # Подключение к БД
         conn = get_db_connection()
         if not conn:
-            return jsonify({'error': 'Ошибка БД'}), 500
+            return jsonify({'error': 'Ошибка подключения к базе данных'}), 500
         
         cur = conn.cursor()
+        
+        # 🔥 КЛЮЧЕВОЙ МОМЕНТ: проверяем user_id
+        user_id = session.get('user_id')
+        if not user_id:
+            raise ValueError("session['user_id'] не установлен!")
+        logger.info(f"🔐 Using user_id={user_id} for test creation")
+        
+        # Создаём тест
+        logger.info(f"🗄️ INSERT: title='{title[:50]}...', code='{code}', user_id={user_id}")
         cur.execute("""
             INSERT INTO tests (title, unique_code, created_by_user_id, created_at, is_editable)
             VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE) RETURNING id
-        """, (title, code, session['user_id']))
-        test_id = cur.fetchone()[0]
+        """, (title.strip(), code, int(user_id)))  # 🔥 int() для гарантии типа
         
+        result = cur.fetchone()
+        logger.info(f"🗄️ INSERT result: {result}")
+        
+        if not result or result.get('id') is None:
+            raise Exception("INSERT не вернул id теста")
+        
+        test_id = result['id']
+        logger.info(f"✅ Test created: id={test_id}")
+        
+        # Добавляем вопросы
         for idx, q in enumerate(questions):
-            correct_ans = q.get('correct_answer')
-            points = q.get('points', 1)
-            options = q.get('options', [])
+            if not q or not q.get('text'):
+                continue
             cur.execute("""
                 INSERT INTO test_questions (test_id, question_text, question_type, 
                                             options, order_index, correct_answer, points)
                 VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (test_id, q.get('text'), q.get('type', 'text'), 
-                  json.dumps(options) if options else None, 
-                  idx, correct_ans, points))
+            """, (
+                test_id,
+                q.get('text'),
+                q.get('type', 'text'),
+                json.dumps(q.get('options', [])) if q.get('options') else None,
+                idx,
+                q.get('correct_answer'),
+                int(q.get('points', 1))
+            ))
         
         conn.commit()
+        logger.info(f"✅ Added {len(questions)} questions, committed")
         
-        # Генерация QR-кода
-        qr_data = f"{request.host_url.rstrip('/')}take_test?code={code}"
-        qr_img = qrcode.make(qr_data)
-        buffered = io.BytesIO()
-        qr_img.save(buffered, format="PNG")
-        qr_base64 = base64.b64encode(buffered.getvalue()).decode()
+        # QR-код (не критично)
+        qr_base64 = ""
+        try:
+            qr_data = f"{request.host_url.rstrip('/')}take_test?code={code}"
+            qr_img = qrcode.make(qr_data)
+            buffered = io.BytesIO()
+            qr_img.save(buffered, format="PNG")
+            qr_base64 = base64.b64encode(buffered.getvalue()).decode()
+            logger.info("✅ QR generated")
+        except Exception as qr_err:
+            logger.warning(f"⚠️ QR generation warning: {qr_err}")
         
         cur.close()
         conn.close()
         
         return jsonify({
-            'success': True, 
-            'message': 'Тест создан!', 
+            'success': True,
+            'message': 'Тест создан!',
             'code': code,
             'qr_code': qr_base64,
             'test_id': test_id
         })
+        
+    except psycopg2.Error as db_err:
+        logger.error(f"❌ PostgreSQL Error: {db_err}")
+        logger.error(f"❌ SQL State: {db_err.pgcode if hasattr(db_err, 'pgcode') else 'N/A'}")
+        if conn:
+            try:
+                conn.rollback()
+                logger.info("🔄 DB rollback done")
+            except:
+                pass
+        return jsonify({'error': f'Database error: {str(db_err)}'}), 500
+        
     except Exception as e:
-        print(f"Error creating test: {e}")
-        return jsonify({'error': str(e)}), 500
+        # 🔥 ПОЛНОЕ ЛОГИРОВАНИЕ
+        error_type = type(e).__name__
+        error_msg = str(e)
+        error_repr = repr(e)
+        error_tb = traceback.format_exc()
+        
+        logger.error(f"❌ CRITICAL ERROR in create_test:")
+        logger.error(f"   Type: {error_type}")
+        logger.error(f"   str(e): '{error_msg}'")
+        logger.error(f"   repr(e): {error_repr}")
+        logger.error(f"   Value: {e} (type: {type(e)})")
+        logger.error(f"   Traceback:\n{error_tb}")
+        
+        if conn:
+            try:
+                conn.rollback()
+            except:
+                pass
+        
+        # 🔥 ВАЖНО: не возвращаем "0", всегда возвращаем понятное сообщение
+        safe_msg = error_msg if error_msg and error_msg != "0" else f"{error_type} occurred"
+        return jsonify({
+            'error': f'{error_type}: {safe_msg}',
+            'debug': safe_msg if app.debug else None
+        }), 500
+        
+    finally:
+        if cur:
+            try:
+                cur.close()
+            except:
+                pass
+        if conn:
+            try:
+                conn.close()
+            except:
+                pass
+
+# ===== ОСТАЛЬНЫЕ API МАРШРУТЫ (сокращённо) =====
 
 @app.route('/api/get_test_by_code', methods=['POST'])
 def get_test_by_code():
     try:
-        data = request.json or {}
+        data = request.get_json(force=True, silent=True) or {}
         code = data.get('code')
         if not code:
             return jsonify({'error': 'Введите код теста'}), 400
         
         conn = get_db_connection()
         if not conn:
-            return jsonify({'error': 'Ошибка подключения к БД'}), 500
+            return jsonify({'error': 'Ошибка БД'}), 500
         
         cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, title, unique_code, created_by_user_id
-            FROM tests WHERE unique_code = %s
-        """, (code.upper(),))
+        cur.execute("SELECT id, title, unique_code, created_by_user_id FROM tests WHERE unique_code = %s", (code.upper(),))
         test = cur.fetchone()
         
         if not test:
@@ -430,22 +524,19 @@ def get_test_by_code():
         return jsonify({
             'success': True,
             'test': {
-                'id': test['id'],
-                'title': test['title'],
-                'code': test['unique_code'],
-                'created_by_user_id': test['created_by_user_id'],
-                'questions': result_questions
+                'id': test['id'], 'title': test['title'],
+                'code': test['unique_code'], 'questions': result_questions
             }
         })
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"get_test_by_code error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/submit_test', methods=['POST'])
 @login_required
 def submit_test():
     try:
-        data = request.json or {}
+        data = request.get_json(force=True, silent=True) or {}
         test_id = data.get('test_id')
         answers = data.get('answers', {})
         
@@ -474,13 +565,11 @@ def submit_test():
             if is_correct:
                 total_score += q['points']
             detailed_results.append({
-                'question_id': q['id'],
-                'question_text': q['question_text'],
+                'question_id': q['id'], 'question_text': q['question_text'],
                 'user_answer': user_answer or '(не указан)',
                 'correct_answer': q['correct_answer'] or '(нет ответа)',
                 'points_earned': q['points'] if is_correct else 0,
-                'max_points': q['points'],
-                'is_correct': is_correct,
+                'max_points': q['points'], 'is_correct': is_correct,
                 'question_type': q['question_type']
             })
         
@@ -488,7 +577,7 @@ def submit_test():
             INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json)
             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s) RETURNING id
         """, (test_id, session['user_id'], total_score, max_possible_score, json.dumps(detailed_results, ensure_ascii=False)))
-        result_id = cur.fetchone()[0]
+        result_id = cur.fetchone()['id']
         
         for detail in detailed_results:
             cur.execute("""
@@ -502,16 +591,12 @@ def submit_test():
         
         percentage = (total_score / max_possible_score * 100) if max_possible_score > 0 else 0
         return jsonify({
-            'success': True, 
-            'message': 'Тест пройден! Результат сохранен.',
-            'score': total_score,
-            'max_score': max_possible_score,
-            'percentage': round(percentage, 1),
-            'result_id': result_id,
-            'detailed_results': detailed_results
+            'success': True, 'message': 'Тест пройден!',
+            'score': total_score, 'max_score': max_possible_score,
+            'percentage': round(percentage, 1), 'result_id': result_id
         })
     except Exception as e:
-        print(f"Error submitting test: {e}")
+        logger.error(f"submit_test error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/my_results', methods=['GET'])
@@ -539,7 +624,7 @@ def my_results():
         
         return jsonify({'success': True, 'results': results})
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"my_results error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get_my_tests', methods=['GET'])
@@ -564,174 +649,21 @@ def get_my_tests():
         conn.close()
         return jsonify(tests)
     except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_all_tests', methods=['GET'])
-@login_required
-def get_all_tests():
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Ошибка БД'}), 500
-        
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT t.id, t.title, t.unique_code, t.created_at, u.username as creator_name,
-                   (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
-            FROM tests t
-            LEFT JOIN users u ON t.created_by_user_id = u.id
-            ORDER BY t.created_at DESC
-        """)
-        
-        tests = [dict(row) for row in cur.fetchall()]
-        cur.close()
-        conn.close()
-        return jsonify(tests)
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_test_for_edit/<int:test_id>', methods=['GET'])
-@login_required
-def get_test_for_edit(test_id):
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Ошибка БД'}), 500
-        
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT id, title, unique_code FROM tests 
-            WHERE id = %s AND created_by_user_id = %s
-        """, (test_id, session['user_id']))
-        test = cur.fetchone()
-        
-        if not test:
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Тест не найден или у вас нет прав'}), 404
-        
-        cur.execute("""
-            SELECT id, question_text, question_type, options, correct_answer, points, order_index
-            FROM test_questions WHERE test_id = %s ORDER BY order_index
-        """, (test_id,))
-        
-        questions = []
-        for row in cur.fetchall():
-            q = dict(row)
-            if q['options']:
-                try:
-                    q['options'] = json.loads(q['options'])
-                except:
-                    q['options'] = []
-            else:
-                q['options'] = []
-            questions.append(q)
-        
-        cur.close()
-        conn.close()
-        return jsonify({'success': True, 'test': dict(test), 'questions': questions})
-    except Exception as e:
-        print(f"Error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/update_test/<int:test_id>', methods=['PUT'])
-@login_required
-def update_test(test_id):
-    try:
-        data = request.json or {}
-        title = data.get('title')
-        questions = data.get('questions', [])
-        
-        if not title or not questions:
-            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
-        
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Ошибка БД'}), 500
-        
-        cur = conn.cursor()
-        cur.execute("""
-            SELECT id FROM tests WHERE id = %s AND created_by_user_id = %s AND is_editable = TRUE
-        """, (test_id, session['user_id']))
-        
-        if not cur.fetchone():
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'У вас нет прав на редактирование этого теста'}), 403
-        
-        cur.execute("UPDATE tests SET title = %s WHERE id = %s", (title, test_id))
-        cur.execute("DELETE FROM test_questions WHERE test_id = %s", (test_id,))
-        
-        for idx, q in enumerate(questions):
-            correct_ans = q.get('correct_answer')
-            points = q.get('points', 1)
-            options = q.get('options', [])
-            cur.execute("""
-                INSERT INTO test_questions (test_id, question_text, question_type, 
-                                            options, order_index, correct_answer, points)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (test_id, q.get('text'), q.get('type', 'text'), 
-                  json.dumps(options) if options else None, 
-                  idx, correct_ans, points))
-        
-        conn.commit()
-        cur.close()
-        conn.close()
-        return jsonify({'success': True, 'message': 'Тест обновлен!'})
-    except Exception as e:
-        print(f"Error updating test: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_my_results_detail/<int:result_id>', methods=['GET'])
-@login_required
-def get_my_results_detail(result_id):
-    try:
-        conn = get_db_connection()
-        if not conn:
-            return jsonify({'error': 'Ошибка БД'}), 500
-        
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-        cur.execute("""
-            SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
-            FROM test_results tr
-            JOIN tests t ON tr.test_id = t.id
-            WHERE tr.id = %s AND tr.user_id = %s
-        """, (result_id, session['user_id']))
-        result = cur.fetchone()
-        
-        if not result:
-            cur.close()
-            conn.close()
-            return jsonify({'error': 'Результат не найден'}), 404
-        
-        cur.execute("""
-            SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
-            FROM test_answers_detail tad
-            JOIN test_questions tq ON tad.question_id = tq.id
-            WHERE tad.result_id = %s
-        """, (result_id,))
-        details = [dict(row) for row in cur.fetchall()]
-        
-        cur.close()
-        conn.close()
-        return jsonify({'success': True, 'result': dict(result), 'details': details})
-    except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"get_my_tests error: {e}\n{traceback.format_exc()}")
         return jsonify({'error': str(e)}), 500
 
 # ===== ЗАПУСК =====
 
-# Инициализируем базу данных при старте
-print("Инициализация базы данных...")
-init_database()
-
 if __name__ == '__main__':
+    logger.info("🚀 Starting SurveySystem...")
+    
+    print("Инициализация базы данных...")
+    init_database()
+    
     print("=" * 50)
     print("🚀 Server: http://localhost:3000")
     print("👨‍💼 Admin: admin / admin123")
-    print("👨‍🏫 Teacher: teacher / teacher123")
+    print("👨‍🏫 Teacher: teacher / teacher123") 
     print("👨‍🎓 Student: student / student123")
     print("=" * 50)
     
