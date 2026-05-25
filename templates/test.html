@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Прохождение теста - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/admin">Админ</a>
+            <a href="/survey" class="active">Тест</a>
+            <a href="/login_page">Вход</a>
+            <a href="/register_page">Регистрация</a>
+        </div>
+    </nav>
+
+    <div id="code-step" class="step active">
+        <div class="search-container">
+            <div class="illustration">📋</div>
+            <h1>Прохождение теста</h1>
+            <p>Введите код теста или отсканируйте QR-код</p>
+            
+            <div class="code-form">
+                <div class="form-group">
+                    <label for="test-code">Введите код теста:</label>
+                    <input type="text" id="test-code" placeholder="Например: ABC123" required>
+                </div>
+                <button class="btn btn-primary" onclick="findTest()">Найти тест</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="test-step" class="step" style="display: none;">
+        <div class="survey-header">
+            <h2 id="display-test-title">Название теста</h2>
+            <div class="info-message" style="background: var(--warning-light); padding: 0.5rem; border-radius: var(--radius-md); margin-top: 0.5rem; font-size: 0.8rem;">
+                ⚡ Результаты этого теста не сохраняются в базу данных
+            </div>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+
+        <div id="questions-container"></div>
+
+        <div class="survey-actions">
+            <button class="btn btn-secondary" id="prev-btn" onclick="prevQuestion()" style="display: none;">◀ Назад</button>
+            <button class="btn btn-primary" id="next-btn" onclick="nextQuestion()">Далее ▶</button>
+            <button class="btn btn-primary submit-btn" id="submit-btn" onclick="submitTest()" style="display: none;">✅ Завершить тест</button>
+        </div>
+    </div>
+
+    <div id="result-step" class="step" style="display: none;">
+        <div class="success-container">
+            <div class="success-icon">🎉</div>
+            <h2>Тест завершен!</h2>
+            <div id="score-display"></div>
+            <div style="margin-top: 1rem; display: flex; gap: 1rem; justify-content: center;">
+                <a href="/survey" class="btn btn-secondary">🔄 Пройти другой тест</a>
+                <a href="/" class="btn btn-outline">🏠 На главную</a>
+            </div>
+        </div>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <script>
+        let currentTest = null;
+        let currentQuestionIndex = 0;
+        let userAnswers = {};
+
+        // Получение кода из URL параметров
+        const urlParams = new URLSearchParams(window.location.search);
+        const codeFromUrl = urlParams.get('code');
+        if (codeFromUrl) {
+            document.getElementById('test-code').value = codeFromUrl;
+            findTest();
+        }
+
+        async function findTest() {
+            const code = document.getElementById('test-code').value.trim();
+            if (!code) {
+                showMessage('Введите код теста', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/get_test_by_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    showMessage(data.error, 'error');
+                    return;
+                }
+                
+                currentTest = data.test;
+                document.getElementById('display-test-title').textContent = currentTest.title;
+                
+                document.getElementById('code-step').style.display = 'none';
+                document.getElementById('test-step').style.display = 'block';
+                
+                loadQuestions();
+                showMessage('Тест найден! Удачи! 🍀', 'success');
+                
+            } catch (error) {
+                showMessage('Ошибка при поиске теста', 'error');
+            }
+        }
+
+        function loadQuestions() {
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+            
+            currentTest.questions.forEach((question, idx) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'question-item fade-in';
+                questionDiv.id = `question-${idx}`;
+                questionDiv.style.display = idx === 0 ? 'block' : 'none';
+                
+                questionDiv.innerHTML = `
+                    <div class="question-text">
+                        <span style="background: var(--primary-soft); padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.7rem; margin-right: 0.5rem;">
+                            ${question.points || 1} балл${(question.points || 1) > 1 ? 'а' : ''}
+                        </span>
+                        ${escapeHtml(question.question_text)}
+                    </div>
+                    <div class="options-group" id="options-${idx}">
+                        ${renderQuestionOptions(question, idx)}
+                    </div>
+                `;
+                
+                container.appendChild(questionDiv);
+            });
+            
+            updateProgress();
+        }
+
+        function renderQuestionOptions(question, idx) {
+            if (question.question_type === 'text') {
+                return `<textarea class="text-answer" id="answer-${idx}" rows="3" placeholder="Введите ваш ответ..."></textarea>`;
+            }
+            
+            if (question.question_type === 'choice') {
+                return question.options.map(opt => `
+                    <label class="option-radio">
+                        <input type="radio" name="question-${idx}" value="${escapeHtml(opt)}">
+                        <span>${escapeHtml(opt)}</span>
+                    </label>
+                `).join('');
+            }
+            
+            if (question.question_type === 'checkbox') {
+                return question.options.map(opt => `
+                    <label class="option-checkbox">
+                        <input type="checkbox" name="question-${idx}" value="${escapeHtml(opt)}">
+                        <span>${escapeHtml(opt)}</span>
+                    </label>
+                `).join('');
+            }
+            
+            return '';
+        }
+
+        function saveCurrentAnswer() {
+            const currentQ = currentTest.questions[currentQuestionIndex];
+            let answer = null;
+            
+            if (currentQ.question_type === 'text') {
+                const textarea = document.getElementById(`answer-${currentQuestionIndex}`);
+                if (textarea) answer = textarea.value;
+            } 
+            else if (currentQ.question_type === 'choice') {
+                const selected = document.querySelector(`input[name="question-${currentQuestionIndex}"]:checked`);
+                if (selected) answer = selected.value;
+            } 
+            else if (currentQ.question_type === 'checkbox') {
+                const selected = document.querySelectorAll(`input[name="question-${currentQuestionIndex}"]:checked`);
+                if (selected.length > 0) {
+                    answer = Array.from(selected).map(cb => cb.value).join(',');
+                }
+            }
+            
+            if (answer !== null && answer !== '') {
+                userAnswers[currentTest.questions[currentQuestionIndex].id] = answer;
+            }
+        }
+
+        function nextQuestion() {
+            saveCurrentAnswer();
+            
+            if (currentQuestionIndex < currentTest.questions.length - 1) {
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'none';
+                currentQuestionIndex++;
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'block';
+                updateProgress();
+                updateButtons();
+            }
+        }
+
+        function prevQuestion() {
+            saveCurrentAnswer();
+            
+            if (currentQuestionIndex > 0) {
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'none';
+                currentQuestionIndex--;
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'block';
+                updateProgress();
+                updateButtons();
+            }
+        }
+
+        function updateProgress() {
+            const total = currentTest.questions.length;
+            const answered = Object.keys(userAnswers).length;
+            const percent = (answered / total) * 100;
+            document.getElementById('progress-fill').style.width = `${percent}%`;
+        }
+
+        function updateButtons() {
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            if (currentQuestionIndex === 0) {
+                prevBtn.style.display = 'none';
+            } else {
+                prevBtn.style.display = 'flex';
+            }
+            
+            if (currentQuestionIndex === currentTest.questions.length - 1) {
+                nextBtn.style.display = 'none';
+                submitBtn.style.display = 'flex';
+            } else {
+                nextBtn.style.display = 'flex';
+                submitBtn.style.display = 'none';
+            }
+        }
+
+        async function submitTest() {
+            saveCurrentAnswer();
+            
+            // Проверка обязательных вопросов
+            for (let i = 0; i < currentTest.questions.length; i++) {
+                const q = currentTest.questions[i];
+                if (!userAnswers[q.id] && q.question_type !== 'text') {
+                    showMessage(`Пожалуйста, ответьте на вопрос: ${q.question_text}`, 'warning');
+                    document.getElementById(`question-${currentQuestionIndex}`).style.display = 'none';
+                    currentQuestionIndex = i;
+                    document.getElementById(`question-${currentQuestionIndex}`).style.display = 'block';
+                    updateButtons();
+                    return;
+                }
+            }
+            
+            try {
+                const response = await fetch('/api/submit_test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        survey_id: currentTest.id,
+                        answers: userAnswers
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('test-step').style.display = 'none';
+                    document.getElementById('result-step').style.display = 'block';
+                    
+                    const totalPoints = currentTest.questions.reduce((sum, q) => sum + (q.points || 1), 0);
+                    document.getElementById('score-display').innerHTML = `
+                        <div class="score-display">
+                            🎯 Ваш результат: ${result.score} / ${totalPoints}
+                        </div>
+                        <div style="margin-top: 0.5rem; font-size: 0.9rem; color: var(--text-secondary);">
+                            ${result.score === totalPoints ? '🏆 Отлично! Все ответы верны!' : 
+                              result.score >= totalPoints/2 ? '👍 Хороший результат!' : 
+                              '📚 Попробуйте пройти тест еще раз!'}
+                        </div>
+                    `;
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Ошибка при отправке', 'error');
+            }
+        }
+
+        function showMessage(text, type) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.textContent = text;
+            msgDiv.className = `message ${type}`;
+            msgDiv.style.display = 'block';
+            setTimeout(() => {
+                msgDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

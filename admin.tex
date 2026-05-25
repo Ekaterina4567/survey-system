@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Панель администратора - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .option-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            background: var(--bg-white);
+            padding: 0.75rem;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-light);
+        }
+        .option-item input[type="text"] {
+            flex: 1;
+        }
+        .options-list {
+            margin-top: 0.5rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/admin" class="active">Админ панель</a>
+            <a href="#" onclick="logout()">Выход</a>
+        </div>
+    </nav>
+
+    <div class="admin-header">
+        <h1>👨‍💼 Панель администратора</h1>
+        <p>Создавайте тесты и просматривайте результаты студентов</p>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('create')">📝 Создать тест</button>
+        <button class="tab-btn" onclick="switchTab('results')">📊 Результаты студентов</button>
+        <button class="tab-btn" onclick="switchTab('list')">📋 Мои тесты</button>
+    </div>
+
+    <div id="create-tab" class="tab-content active">
+        <div class="card">
+            <div class="card-header">
+                <h2>Создание нового теста</h2>
+                <div class="info-badge" style="background: var(--success-light); padding: 0.5rem 1rem; border-radius: var(--radius-full); font-size: 0.8rem;">
+                    ✨ Код и QR-код сгенерируются автоматически
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label for="test-title">Название теста</label>
+                <input type="text" id="test-title" placeholder="Например: Итоговый тест по математике">
+            </div>
+            
+            <div id="questions-container"></div>
+            
+            <div style="display: flex; gap: 1rem; margin-top: 1rem;">
+                <button class="btn btn-add" onclick="addQuestion()">➕ Добавить вопрос</button>
+                <button class="btn btn-primary" onclick="createTest()">🚀 Создать тест</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="results-tab" class="tab-content">
+        <div class="card">
+            <div class="card-header">
+                <h2>Результаты студентов</h2>
+            </div>
+            <div class="form-group">
+                <label for="test-select">Выберите тест</label>
+                <select id="test-select" onchange="loadResults()">
+                    <option value="">-- Выберите тест --</option>
+                </select>
+            </div>
+            <div id="results-container"></div>
+        </div>
+    </div>
+
+    <div id="list-tab" class="tab-content">
+        <div class="card">
+            <div class="card-header">
+                <h2>Мои тесты</h2>
+            </div>
+            <div id="tests-list-container"></div>
+        </div>
+    </div>
+
+    <div id="qr-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 28px; padding: 2rem; max-width: 400px; text-align: center;">
+            <h3 id="qr-title"></h3>
+            <img id="qr-image" style="max-width: 250px; margin: 1rem 0;">
+            <p>Код: <strong id="qr-code-text"></strong></p>
+            <p>Ссылка: <span id="qr-url" style="font-size: 0.8rem; word-break: break-all;"></span></p>
+            <button class="btn btn-primary" onclick="closeQRModal()">Закрыть</button>
+        </div>
+    </div>
+
+    <script>
+        let questionCounter = 0;
+
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab + '-tab').classList.add('active');
+            event.target.classList.add('active');
+            
+            if (tab === 'results') loadTestsForSelect();
+            if (tab === 'list') loadTestsList();
+        }
+
+        function addQuestion() {
+            const id = Date.now() + questionCounter++;
+            const questionNumber = document.querySelectorAll('.question-block').length + 1;
+            const html = `
+                <div class="question-block" id="q-${id}" style="background: var(--primary-soft); padding: 1.5rem; border-radius: var(--radius-md); margin-bottom: 1.25rem; border: 1px solid var(--border-light);">
+                    <div class="question-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; padding-bottom: 0.75rem; border-bottom: 1px solid var(--border-light);">
+                        <span class="question-number-badge" style="font-weight: 600; color: var(--primary); background: var(--bg-white); padding: 0.25rem 0.75rem; border-radius: var(--radius-full);">Вопрос ${questionNumber}</span>
+                        <button class="btn-remove" onclick="document.getElementById('q-${id}').remove(); renumberQuestions()" style="background: transparent; border: 1px solid var(--error-light); color: var(--error); padding: 0.4rem 1rem; border-radius: var(--radius-sm); cursor: pointer;">🗑 Удалить</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Текст вопроса</label>
+                        <input type="text" class="q-text" placeholder="Введите текст вопроса" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm);">
+                    </div>
+                    <div class="form-group">
+                        <label>Тип вопроса</label>
+                        <select class="q-type" onchange="toggleOptions('${id}', this.value)" style="width: 100%; padding: 0.75rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm);">
+                            <option value="choice">🔘 Один вариант (автопроверка)</option>
+                            <option value="checkbox">☑️ Несколько вариантов (автопроверка)</option>
+                            <option value="text">📝 Текстовый ответ (без проверки)</option>
+                        </select>
+                    </div>
+                    <div class="options-container" id="opt-${id}" style="display: none;">
+                        <label>Варианты ответов</label>
+                        <div class="options-list"></div>
+                        <button class="btn-add" onclick="addOption('${id}')" style="margin-top: 0.5rem; background: var(--primary-soft); color: var(--primary); border: none; padding: 0.6rem 1.2rem; border-radius: var(--radius-sm); cursor: pointer;">➕ Добавить вариант</button>
+                    </div>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label>⭐ Баллы за вопрос</label>
+                        <input type="number" class="q-points" value="1" min="1" style="width: 100px; padding: 0.5rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm);">
+                    </div>
+                </div>
+            `;
+            document.getElementById('questions-container').insertAdjacentHTML('beforeend', html);
+        }
+
+        function renumberQuestions() {
+            const blocks = document.querySelectorAll('.question-block');
+            blocks.forEach((block, idx) => {
+                const badge = block.querySelector('.question-number-badge');
+                if (badge) badge.textContent = `Вопрос ${idx + 1}`;
+            });
+        }
+
+        function toggleOptions(id, type) {
+            const container = document.getElementById(`opt-${id}`);
+            if (type === 'choice' || type === 'checkbox') {
+                container.style.display = 'block';
+                if (container.querySelector('.options-list').children.length === 0) {
+                    addOption(id);
+                }
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function addOption(qId) {
+            const container = document.querySelector(`#opt-${qId} .options-list`);
+            const qType = document.querySelector(`#q-${qId} .q-type`).value;
+            const html = `
+                <div class="option-item">
+                    <input type="text" class="opt-text" placeholder="Вариант ответа" style="flex: 1; padding: 0.5rem; border: 1px solid var(--border-light); border-radius: var(--radius-sm);">
+                    <label style="display: flex; align-items: center; gap: 0.25rem; white-space: nowrap;">
+                        <input type="${qType === 'choice' ? 'radio' : 'checkbox'}" class="opt-correct" name="correct_${qId}"> ✅ Правильный
+                    </label>
+                    <button class="btn-remove" onclick="this.parentElement.remove()" style="background: transparent; border: 1px solid var(--error-light); color: var(--error); padding: 0.3rem 0.8rem; border-radius: var(--radius-sm); cursor: pointer;">🗑</button>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function createTest() {
+            const title = document.getElementById('test-title').value.trim();
+            
+            if (!title) {
+                alert('Введите название теста');
+                return;
+            }
+            
+            const questions = [];
+            const blocks = document.querySelectorAll('.question-block');
+            
+            for (let block of blocks) {
+                const text = block.querySelector('.q-text')?.value.trim();
+                const type = block.querySelector('.q-type')?.value;
+                const points = parseInt(block.querySelector('.q-points')?.value) || 1;
+                
+                if (!text) {
+                    alert('Заполните текст всех вопросов');
+                    return;
+                }
+                
+                let options = [];
+                let correctAnswer = null;
+                
+                if (type !== 'text') {
+                    const optionItems = block.querySelectorAll('.option-item');
+                    let hasCorrect = false;
+                    for (let opt of optionItems) {
+                        const optText = opt.querySelector('.opt-text')?.value.trim();
+                        if (optText) {
+                            options.push(optText);
+                            if (opt.querySelector('.opt-correct')?.checked) {
+                                correctAnswer = optText;
+                                hasCorrect = true;
+                            }
+                        }
+                    }
+                    if (options.length === 0) {
+                        alert(`Для вопроса "${text}" добавьте варианты ответов`);
+                        return;
+                    }
+                    if (type === 'choice' && !hasCorrect) {
+                        alert(`Для вопроса "${text}" отметьте правильный вариант`);
+                        return;
+                    }
+                }
+                
+                questions.push({
+                    text: text,
+                    type: type,
+                    options: options,
+                    correct_answer: correctAnswer,
+                    points: points
+                });
+            }
+            
+            if (questions.length === 0) {
+                alert('Добавьте хотя бы один вопрос');
+                return;
+            }
+            
+            try {
+                const response = await fetch('/api/create_test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        title: title,
+                        questions: questions
+                    })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    showQRModal(data.title, data.qr_code, data.code);
+                    
+                    document.getElementById('test-title').value = '';
+                    document.getElementById('questions-container').innerHTML = '';
+                    questionCounter = 0;
+                    
+                    // Обновляем списки
+                    loadTestsList();
+                    loadTestsForSelect();
+                    
+                    alert(`✅ Тест "${title}" успешно создан!\nКод для доступа: ${data.code}`);
+                    
+                } else {
+                    alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('Ошибка подключения к серверу: ' + error.message);
+            }
+        }
+
+        function showQRModal(title, qrBase64, code) {
+            const url = `${window.location.origin}/take_test?code=${code}`;
+            document.getElementById('qr-title').textContent = title;
+            document.getElementById('qr-image').src = `data:image/png;base64,${qrBase64}`;
+            document.getElementById('qr-code-text').textContent = code;
+            document.getElementById('qr-url').textContent = url;
+            document.getElementById('qr-modal').style.display = 'flex';
+        }
+
+        function closeQRModal() {
+            document.getElementById('qr-modal').style.display = 'none';
+        }
+
+        async function loadTestsList() {
+            try {
+                const response = await fetch('/api/get_all_tests');
+                if (!response.ok) throw new Error('Ошибка загрузки');
+                const tests = await response.json();
+                
+                if (tests.length === 0) {
+                    document.getElementById('tests-list-container').innerHTML = '<p>У вас пока нет созданных тестов</p>';
+                    return;
+                }
+                
+                let html = '<div style="display: flex; flex-direction: column; gap: 1rem;">';
+                tests.forEach(t => {
+                    const testUrl = `${window.location.origin}/take_test?code=${t.unique_code}`;
+                    html += `
+                        <div style="background: var(--primary-soft); padding: 1rem; border-radius: var(--radius-md);">
+                            <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                <div>
+                                    <strong>${escapeHtml(t.title)}</strong>
+                                    <span style="color: var(--primary); margin-left: 0.5rem;">[${t.unique_code}]</span>
+                                    <span style="background: var(--success-light); padding: 0.2rem 0.5rem; border-radius: var(--radius-full); font-size: 0.7rem;">📊 ${t.attempts_count || 0} попыток</span>
+                                </div>
+                                <div style="display: flex; gap: 0.5rem;">
+                                    <button class="btn btn-outline" onclick="copyCode('${t.unique_code}')">📋 Копировать код</button>
+                                    <button class="btn btn-primary" onclick="viewResults(${t.id})">📊 Результаты</button>
+                                </div>
+                            </div>
+                            <div style="font-size: 0.8rem; color: var(--text-secondary); margin-top: 0.5rem;">
+                                Создан: ${new Date(t.created_at).toLocaleDateString()}
+                            </div>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                document.getElementById('tests-list-container').innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading tests:', error);
+                document.getElementById('tests-list-container').innerHTML = '<p>Ошибка загрузки списка тестов</p>';
+            }
+        }
+
+        async function loadTestsForSelect() {
+            try {
+                const response = await fetch('/api/get_all_tests');
+                if (!response.ok) throw new Error('Ошибка загрузки');
+                const tests = await response.json();
+                const select = document.getElementById('test-select');
+                select.innerHTML = '<option value="">-- Выберите тест --</option>';
+                tests.forEach(t => {
+                    const option = document.createElement('option');
+                    option.value = t.id;
+                    option.textContent = `${t.title} (${t.unique_code})`;
+                    select.appendChild(option);
+                });
+            } catch (error) {
+                console.error('Error loading tests for select:', error);
+            }
+        }
+
+        async function loadResults() {
+            const testId = document.getElementById('test-select').value;
+            if (!testId) {
+                document.getElementById('results-container').innerHTML = '';
+                return;
+            }
+            
+            try {
+                const response = await fetch(`/api/get_test_results/${testId}`);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    document.getElementById('results-container').innerHTML = `<p class="error">${data.error}</p>`;
+                    return;
+                }
+                
+                let html = `
+                    <div style="background: linear-gradient(135deg, var(--primary-soft), white); padding: 1.5rem; border-radius: var(--radius-lg); margin-bottom: 1.5rem;">
+                        <h3>📊 Статистика теста: ${escapeHtml(data.test.title)}</h3>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem; margin-top: 1rem;">
+                            <div style="text-align: center; padding: 0.5rem; background: white; border-radius: var(--radius-md);">
+                                <div style="font-size: 2rem; font-weight: 800; color: var(--primary);">${data.stats.total_attempts || 0}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">Всего попыток</div>
+                            </div>
+                            <div style="text-align: center; padding: 0.5rem; background: white; border-radius: var(--radius-md);">
+                                <div style="font-size: 2rem; font-weight: 800; color: var(--success);">${Math.round(data.stats.avg_score || 0)}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">Средний балл</div>
+                            </div>
+                            <div style="text-align: center; padding: 0.5rem; background: white; border-radius: var(--radius-md);">
+                                <div style="font-size: 2rem; font-weight: 800; color: var(--warning);">${data.stats.max_score || 0}</div>
+                                <div style="font-size: 0.8rem; color: var(--text-secondary);">Макс. балл</div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                if (data.results.length === 0) {
+                    html += '<p>Пока нет результатов по этому тесту</p>';
+                } else {
+                    html += `
+                        <table class="results-table" style="width: 100%; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: var(--primary-soft);">
+                                    <th style="padding: 0.75rem; text-align: left;">Студент</th>
+                                    <th style="padding: 0.75rem; text-align: left;">Email</th>
+                                    <th style="padding: 0.75rem; text-align: left;">Результат</th>
+                                    <th style="padding: 0.75rem; text-align: left;">Процент</th>
+                                    <th style="padding: 0.75rem; text-align: left;">Дата</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    for (const r of data.results) {
+                        const percentage = r.percentage || 0;
+                        let percentColor = '';
+                        if (percentage >= 80) percentColor = 'green';
+                        else if (percentage >= 60) percentColor = 'orange';
+                        else percentColor = 'red';
+                        
+                        html += `
+                            <tr style="border-bottom: 1px solid var(--border-light);">
+                                <td style="padding: 0.75rem;"><strong>${escapeHtml(r.full_name || r.username)}</strong></td>
+                                <td style="padding: 0.75rem;">${escapeHtml(r.email)}</td>
+                                <td style="padding: 0.75rem;">${r.score} / ${r.max_score}</td>
+                                <td style="padding: 0.75rem; color: ${percentColor}; font-weight: 600;">${percentage}%</td>
+                                <td style="padding: 0.75rem;">${new Date(r.completed_at).toLocaleString()}</td>
+                            </tr>
+                        `;
+                    }
+                    html += `</tbody></table>`;
+                }
+                
+                document.getElementById('results-container').innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+                document.getElementById('results-container').innerHTML = '<p>Ошибка загрузки результатов</p>';
+            }
+        }
+
+        function viewResults(testId) {
+            // Переключаемся на вкладку результатов
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            document.getElementById('results-tab').classList.add('active');
+            const btns = document.querySelectorAll('.tab-btn');
+            if (btns[1]) btns[1].classList.add('active');
+            
+            // Ждем загрузки селекта и выбираем тест
+            setTimeout(async () => {
+                await loadTestsForSelect();
+                const select = document.getElementById('test-select');
+                if (select) {
+                    select.value = testId;
+                    loadResults();
+                }
+            }, 100);
+        }
+
+        function copyCode(code) {
+            navigator.clipboard.writeText(code);
+            alert(`Код "${code}" скопирован в буфер обмена`);
+        }
+
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        // Initial load
+        loadTestsList();
+    </script>
+</body>
+</html>

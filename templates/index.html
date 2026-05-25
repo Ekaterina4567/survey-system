@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurveySystem - Платформа тестирования</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links" id="nav-links">
+            <a href="/" class="active">Главная</a>
+            <a href="/login_page">Вход</a>
+            <a href="/register_page">Регистрация</a>
+        </div>
+    </nav>
+
+    <div class="hero-section">
+        <div class="hero-content">
+            <h1>Система <span class="highlight">онлайн тестирования</span></h1>
+            <p>Создавайте тесты, проходите их и получайте результаты. Вся статистика сохраняется в вашем личном кабинете.</p>
+            <div class="hero-buttons">
+                <a href="/take_test" class="btn btn-primary">📝 Пройти тест</a>
+                <a href="/create_test_page" class="btn btn-secondary">✨ Создать тест</a>
+            </div>
+        </div>
+        <div class="hero-illustration">
+            <div class="illustration-box">📋</div>
+            <div style="font-weight: 600; color: #3D2B1F; margin-top: 1rem;">Тест-система</div>
+            <div style="font-size: 0.8rem; color: #7A6B5D;">Сохраняйте результаты</div>
+        </div>
+    </div>
+
+    <div class="features-section">
+        <div class="feature-card">
+            <div class="feature-icon">📝</div>
+            <h3>Для студентов</h3>
+            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется в личном кабинете.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">👨‍💼</div>
+            <h3>Для преподавателей</h3>
+            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты каждого студента.</p>
+        </div>
+        <div class="feature-card">
+            <div class="feature-icon">📊</div>
+            <h3>Статистика</h3>
+            <p>Детальная аналитика: средний балл, лучшие результаты, прогресс каждого студента.</p>
+        </div>
+    </div>
+
+    <div class="stats-banner">
+        <div class="stat-item">
+            <div class="stat-number" id="active-tests">0</div>
+            <div class="stat-label">Всего тестов</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="total-attempts">0</div>
+            <div class="stat-label">Пройдено тестов</div>
+        </div>
+        <div class="stat-item">
+            <div class="stat-number" id="total-users">0</div>
+            <div class="stat-label">Студентов</div>
+        </div>
+    </div>
+
+    <script>
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/get_all_tests');
+                if (response.ok) {
+                    const tests = await response.json();
+                    const statsDiv = document.getElementById('active-tests');
+                    if (statsDiv) {
+                        statsDiv.textContent = tests.length;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
+            }
+        }
+        
+        loadStats();
+        
+        // Проверяем авторизацию для отображения правильных кнопок
+        fetch('/check_auth')
+            .then(function(res) { return res.json(); })
+            .then(function(data) {
+                const navLinks = document.getElementById('nav-links');
+                if (data.authenticated && navLinks) {
+                    if (data.role === 'admin') {
+                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/admin">Админ панель</a><a href="#" onclick="logout()">Выход</a>';
+                    } else {
+                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/student_dashboard">Мои результаты</a><a href="/take_test">Пройти тест</a><a href="/create_test_page">Создать тест</a><a href="#" onclick="logout()">Выход</a>';
+                    }
+                }
+            })
+            .catch(function(error) { console.error('Auth check error:', error); });
+            
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+    </script>
+</body>
+</html>

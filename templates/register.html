@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Регистрация - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/login_page">Вход</a>
+            <a href="/register_page" class="active">Регистрация</a>
+        </div>
+    </nav>
+
+    <div class="auth-container">
+        <h1>📝 Регистрация</h1>
+        
+        <div class="auth-tabs">
+            <button class="auth-tab active" onclick="switchRole('student')">🎓 Студент</button>
+            <button class="auth-tab" onclick="switchRole('teacher')">👨‍🏫 Преподаватель</button>
+        </div>
+
+        <form id="register-form" onsubmit="register(event)">
+            <div class="form-group">
+                <label for="username">Логин *</label>
+                <input type="text" id="username" required placeholder="Придумайте логин">
+            </div>
+
+            <div class="form-group">
+                <label for="email">Email *</label>
+                <input type="email" id="email" required placeholder="your@email.com">
+            </div>
+
+            <div class="form-group">
+                <label for="full-name">ФИО</label>
+                <input type="text" id="full-name" placeholder="Иванов Иван Иванович">
+            </div>
+
+            <div class="form-group">
+                <label for="password">Пароль *</label>
+                <input type="password" id="password" required placeholder="Минимум 6 символов" minlength="6">
+            </div>
+
+            <div class="form-group">
+                <label for="confirm-password">Подтвердите пароль *</label>
+                <input type="password" id="confirm-password" required placeholder="Повторите пароль">
+            </div>
+
+            <div id="message" class="message"></div>
+
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Зарегистрироваться</button>
+        </form>
+
+        <div class="auth-footer">
+            <p>Уже есть аккаунт? <a href="/login_page">Войти</a></p>
+        </div>
+    </div>
+
+    <script>
+        let selectedRole = 'student';
+
+        function switchRole(role) {
+            selectedRole = role;
+            document.querySelectorAll('.auth-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+        }
+
+        async function register(e) {
+            e.preventDefault();
+            const msg = document.getElementById('message');
+            
+            const username = document.getElementById('username').value.trim();
+            const email = document.getElementById('email').value.trim();
+            const fullName = document.getElementById('full-name').value.trim();
+            const password = document.getElementById('password').value;
+            const confirm = document.getElementById('confirm-password').value;
+            
+            if (!username || !email || !password) {
+                msg.className = 'message error';
+                msg.textContent = 'Заполните все обязательные поля';
+                msg.style.display = 'block';
+                return;
+            }
+            
+            if (password !== confirm) {
+                msg.className = 'message error';
+                msg.textContent = 'Пароли не совпадают';
+                msg.style.display = 'block';
+                return;
+            }
+            
+            if (password.length < 6) {
+                msg.className = 'message error';
+                msg.textContent = 'Пароль должен быть минимум 6 символов';
+                msg.style.display = 'block';
+                return;
+            }
+
+            try {
+                const response = await fetch('/register', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        username: username,
+                        email: email,
+                        full_name: fullName,
+                        password: password,
+                        role: selectedRole
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    msg.className = 'message success';
+                    msg.textContent = data.message;
+                    msg.style.display = 'block';
+                    setTimeout(() => {
+                        window.location.href = '/login_page';
+                    }, 2000);
+                } else {
+                    msg.className = 'message error';
+                    msg.textContent = data.error || 'Ошибка регистрации';
+                    msg.style.display = 'block';
+                }
+            } catch (error) {
+                msg.className = 'message error';
+                msg.textContent = 'Ошибка подключения к серверу';
+                msg.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

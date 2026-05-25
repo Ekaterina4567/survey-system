@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Вход - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/login_page" class="active">Вход</a>
+            <a href="/register_page">Регистрация</a>
+        </div>
+    </nav>
+
+    <div class="auth-container">
+        <h1>🔐 Вход в систему</h1>
+        
+        <form id="login-form" onsubmit="login(event)">
+            <div class="form-group">
+                <label for="username">Логин или Email</label>
+                <input type="text" id="username" required placeholder="Введите логин или email">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Пароль</label>
+                <input type="password" id="password" required placeholder="Введите пароль">
+            </div>
+            
+            <div id="message" class="message"></div>
+            
+            <button type="submit" class="btn btn-primary" style="width: 100%;">Войти</button>
+        </form>
+        
+        <div class="auth-footer">
+            <p>Нет аккаунта? <a href="/register_page">Зарегистрироваться</a></p>
+            <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
+                👨‍💼 Администратор: admin / admin123
+            </p>
+        </div>
+    </div>
+
+    <script>
+        async function login(e) {
+            e.preventDefault();
+            const msgDiv = document.getElementById('message');
+            
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
+            
+            if (!username || !password) {
+                msgDiv.className = 'message error';
+                msgDiv.textContent = 'Заполните все поля';
+                msgDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    msgDiv.className = 'message success';
+                    msgDiv.textContent = data.message;
+                    msgDiv.style.display = 'block';
+                    setTimeout(() => {
+                        window.location.href = data.redirect || '/';
+                    }, 1000);
+                } else {
+                    msgDiv.className = 'message error';
+                    msgDiv.textContent = data.error || 'Ошибка входа';
+                    msgDiv.style.display = 'block';
+                }
+            } catch (error) {
+                msgDiv.className = 'message error';
+                msgDiv.textContent = 'Ошибка подключения к серверу';
+                msgDiv.style.display = 'block';
+            }
+        }
+    </script>
+</body>
+</html>

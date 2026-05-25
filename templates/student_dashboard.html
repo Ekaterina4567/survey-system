@@ -1,0 +1,228 @@
+<!-- Упрощённая версия student_dashboard.html -->
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Мои результаты - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .result-item {
+            background: white;
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-light);
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .result-item:hover {
+            transform: translateX(5px);
+            border-color: var(--primary);
+            box-shadow: var(--shadow-sm);
+        }
+        .my-test-card {
+            background: white;
+            border-radius: var(--radius-md);
+            padding: 1rem;
+            border: 1px solid var(--border-light);
+        }
+        .test-actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .btn-small {
+            padding: 0.3rem 0.8rem;
+            font-size: 0.75rem;
+        }
+        .my-tests-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/student_dashboard" class="active">Мои результаты</a>
+            <a href="/take_test">Пройти тест</a>
+            <a href="/create_test_page">Создать тест</a>
+            <a href="#" onclick="logout()">Выход</a>
+        </div>
+    </nav>
+
+    <div class="admin-header">
+        <h1>📊 Личный кабинет</h1>
+        <p>Ваши результаты и созданные тесты</p>
+    </div>
+
+    <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('results')">📊 Пройденные тесты</button>
+        <button class="tab-btn" onclick="switchTab('my-tests')">📝 Мои тесты</button>
+    </div>
+
+    <div id="results-tab" class="tab-content active">
+        <div class="card">
+            <div class="card-header">
+                <h2>История тестирований</h2>
+            </div>
+            <div id="results-container">
+                <div style="text-align: center; padding: 2rem;">Загрузка результатов...</div>
+            </div>
+        </div>
+    </div>
+
+    <div id="my-tests-tab" class="tab-content">
+        <div class="card">
+            <div class="card-header">
+                <h2>Созданные мной тесты</h2>
+                <a href="/create_test_page" class="btn btn-primary btn-small">➕ Создать тест</a>
+            </div>
+            <div id="my-tests-container">
+                <div style="text-align: center; padding: 2rem;">Загрузка...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function switchTab(tab) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tab + '-tab').classList.add('active');
+            event.target.classList.add('active');
+            
+            if (tab === 'my-tests') {
+                loadMyTests();
+            }
+        }
+
+        async function loadResults() {
+            try {
+                const response = await fetch('/api/my_results');
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    let html = `
+                        <div class="stats-banner" style="margin-bottom: 1.5rem; background: var(--primary-soft); border-radius: var(--radius-lg);">
+                            <div class="stat-item">
+                                <div class="stat-number">${data.stats.total_tests}</div>
+                                <div class="stat-label">Пройдено тестов</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${data.stats.avg_percentage}%</div>
+                                <div class="stat-label">Средний результат</div>
+                            </div>
+                            <div class="stat-item">
+                                <div class="stat-number">${data.stats.best_percentage}%</div>
+                                <div class="stat-label">Лучший результат</div>
+                            </div>
+                        </div>
+                    `;
+                    
+                    data.results.forEach(r => {
+                        let scoreClass = 'low';
+                        if (r.percentage >= 80) scoreClass = 'high';
+                        else if (r.percentage >= 60) scoreClass = 'medium';
+                        
+                        html += `
+                            <div class="result-item" onclick="viewResultDetail(${r.id})">
+                                <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+                                    <div>
+                                        <strong>${escapeHtml(r.title)}</strong>
+                                        <div style="font-size: 0.75rem; color: var(--text-muted);">Код: ${r.unique_code}</div>
+                                    </div>
+                                    <div class="result-score ${scoreClass}" style="font-size: 1.2rem; font-weight: 700;">
+                                        ${r.score} / ${r.max_score} (${r.percentage}%)
+                                    </div>
+                                </div>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem;">
+                                    📅 ${new Date(r.completed_at).toLocaleString()}
+                                </div>
+                                <button class="btn btn-outline btn-small" style="margin-top: 0.75rem;">🔍 Детальный разбор</button>
+                            </div>
+                        `;
+                    });
+                    document.getElementById('results-container').innerHTML = html;
+                } else {
+                    document.getElementById('results-container').innerHTML = `
+                        <div style="text-align: center; padding: 2rem;">
+                            <p>😊 Вы ещё не прошли ни одного теста</p>
+                            <a href="/take_test" class="btn btn-primary">Пройти тест</a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('results-container').innerHTML = '<p>Ошибка загрузки результатов</p>';
+            }
+        }
+
+        async function loadMyTests() {
+            try {
+                const response = await fetch('/api/get_my_tests');
+                const tests = await response.json();
+                
+                if (tests.length > 0) {
+                    let html = '<div class="my-tests-grid">';
+                    tests.forEach(test => {
+                        html += `
+                            <div class="my-test-card">
+                                <strong>${escapeHtml(test.title)}</strong>
+                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                    Код: ${test.unique_code} • Попыток: ${test.attempts_count || 0}
+                                </div>
+                                <div class="test-actions">
+                                    <a href="/take_test?code=${test.unique_code}" class="btn btn-primary btn-small">📝 Пройти</a>
+                                    <a href="/edit_test_page/${test.id}" class="btn btn-secondary btn-small">✏️ Редактировать</a>
+                                    <button class="btn btn-outline btn-small" onclick="copyCode('${test.unique_code}')">📋 Код</button>
+                                </div>
+                            </div>
+                        `;
+                    });
+                    html += '</div>';
+                    document.getElementById('my-tests-container').innerHTML = html;
+                } else {
+                    document.getElementById('my-tests-container').innerHTML = `
+                        <div style="text-align: center; padding: 2rem;">
+                            <p>📝 У вас пока нет созданных тестов</p>
+                            <a href="/create_test_page" class="btn btn-primary">Создать тест</a>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('my-tests-container').innerHTML = '<p>Ошибка загрузки</p>';
+            }
+        }
+
+        function viewResultDetail(resultId) {
+            window.location.href = `/result_detail/${resultId}`;
+        }
+
+        function copyCode(code) {
+            navigator.clipboard.writeText(code);
+            alert(`Код "${code}" скопирован!`);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+
+        loadResults();
+    </script>
+</body>
+</html>

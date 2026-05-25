@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Детальный разбор теста - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .result-card {
+            background: white;
+            border-radius: var(--radius-lg);
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            border-left: 4px solid;
+            transition: all 0.2s;
+        }
+        .result-card.correct {
+            border-left-color: var(--success);
+            background: linear-gradient(135deg, white 0%, var(--success-light) 100%);
+        }
+        .result-card.wrong {
+            border-left-color: var(--error);
+            background: linear-gradient(135deg, white 0%, var(--error-light) 100%);
+        }
+        .result-card .question-text {
+            font-weight: 700;
+            font-size: 1rem;
+            margin-bottom: 1rem;
+            color: var(--text-primary);
+        }
+        .result-card .answer-section {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 1rem;
+            margin-top: 0.75rem;
+            padding-top: 0.75rem;
+            border-top: 1px solid var(--border-light);
+        }
+        .user-answer {
+            background: white;
+            padding: 0.75rem;
+            border-radius: var(--radius-sm);
+        }
+        .correct-answer {
+            background: var(--primary-soft);
+            padding: 0.75rem;
+            border-radius: var(--radius-sm);
+        }
+        .badge-correct {
+            background: var(--success);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.7rem;
+            display: inline-block;
+        }
+        .badge-wrong {
+            background: var(--error);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.7rem;
+            display: inline-block;
+        }
+        .points-badge {
+            background: var(--primary);
+            color: white;
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+            font-size: 0.7rem;
+            margin-left: 0.5rem;
+        }
+        .summary-stats {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: var(--radius-lg);
+            margin-bottom: 2rem;
+            text-align: center;
+        }
+        .summary-stats h1 {
+            font-size: 2rem;
+            margin-bottom: 0.5rem;
+        }
+        .summary-stats .score {
+            font-size: 2.5rem;
+            font-weight: 800;
+        }
+        @media (max-width: 768px) {
+            .result-card .answer-section {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/student_dashboard">Мои результаты</a>
+            <a href="/take_test">Пройти тест</a>
+            <a href="/create_test_page">Создать тест</a>
+            <a href="#" onclick="logout()">Выход</a>
+        </div>
+    </nav>
+
+    <div class="card" style="max-width: 900px; margin: 2rem auto;">
+        <div id="content-container">
+            <div style="text-align: center; padding: 3rem;">
+                <div class="loading-spinner">📊 Загрузка результатов...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Получаем ID из URL или из data-атрибута
+        var resultId = null;
+        var pathParts = window.location.pathname.split('/');
+        for (var i = 0; i < pathParts.length; i++) {
+            if (pathParts[i] === 'result_detail') {
+                if (pathParts[i+1]) {
+                    resultId = parseInt(pathParts[i+1]);
+                }
+                break;
+            }
+        }
+        
+        // Если не нашли в URL, пробуем через переменную из шаблона (безопасно)
+        var templateResultId = parseInt('{{ result_id }}');
+        if (!isNaN(templateResultId) && templateResultId > 0) {
+            resultId = templateResultId;
+        }
+
+        async function loadResultDetail() {
+            if (!resultId) {
+                document.getElementById('content-container').innerHTML = `
+                    <div class="error-message">
+                        <p>Ошибка: ID результата не указан</p>
+                        <a href="/student_dashboard" class="btn btn-primary">⬅ Назад</a>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/get_my_results_detail/' + resultId);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    document.getElementById('content-container').innerHTML = `
+                        <div class="error-message">
+                            <p>${data.error || 'Ошибка загрузки'}</p>
+                            <a href="/student_dashboard" class="btn btn-primary">⬅ Назад</a>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                const result = data.result;
+                const details = data.details;
+                const percentage = (result.score / result.max_score * 100).toFixed(1);
+                const correctCount = details.filter(function(d) { return d.is_correct; }).length;
+                
+                let html = `
+                    <div class="summary-stats">
+                        <h1>📊 ${escapeHtml(result.title)}</h1>
+                        <div class="score">${result.score} / ${result.max_score}</div>
+                        <div style="font-size: 1.2rem;">${percentage}% • ${correctCount} из ${details.length} правильных ответов</div>
+                        <div style="margin-top: 1rem;">📅 ${new Date(result.completed_at).toLocaleString()}</div>
+                    </div>
+                    <div style="margin-bottom: 1.5rem;">
+                        <a href="/student_dashboard" class="btn btn-secondary">⬅ Назад к результатам</a>
+                        <button onclick="window.print()" class="btn btn-outline">🖨 Распечатать</button>
+                    </div>
+                    <h2 style="margin-bottom: 1rem;">📝 Детальный разбор ответов</h2>
+                `;
+                
+                for (var i = 0; i < details.length; i++) {
+                    const detail = details[i];
+                    const isCorrect = detail.is_correct;
+                    html += `
+                        <div class="result-card ${isCorrect ? 'correct' : 'wrong'}">
+                            <div>
+                                <span class="${isCorrect ? 'badge-correct' : 'badge-wrong'}">
+                                    ${isCorrect ? '✅ Верно' : '❌ Неверно'}
+                                </span>
+                                <span class="points-badge">${detail.points_earned} / ${detail.points} баллов</span>
+                            </div>
+                            <div class="question-text">
+                                ${i+1}. ${escapeHtml(detail.question_text)}
+                            </div>
+                            <div class="answer-section">
+                                <div class="user-answer">
+                                    <strong>📝 Ваш ответ:</strong><br>
+                                    ${formatAnswer(detail.user_answer, detail.question_type)}
+                                </div>
+                                <div class="correct-answer">
+                                    <strong>✅ Правильный ответ:</strong><br>
+                                    ${formatAnswer(detail.correct_answer, detail.question_type)}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                }
+                
+                document.getElementById('content-container').innerHTML = html;
+                
+            } catch (error) {
+                console.error('Error:', error);
+                document.getElementById('content-container').innerHTML = `
+                    <div class="error-message">
+                        <p>Ошибка загрузки результатов</p>
+                        <a href="/student_dashboard" class="btn btn-primary">⬅ Назад</a>
+                    </div>
+                `;
+            }
+        }
+        
+        function formatAnswer(answer, type) {
+            if (!answer || answer === '(не указан)') {
+                return '<span style="color: var(--text-muted);">(не указан)</span>';
+            }
+            if (type === 'checkbox') {
+                const answers = answer.split(',');
+                let result = '';
+                for (var i = 0; i < answers.length; i++) {
+                    result += '• ' + escapeHtml(answers[i]) + '<br>';
+                }
+                return result;
+            }
+            return escapeHtml(answer);
+        }
+        
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+        
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+        
+        loadResultDetail();
+    </script>
+</body>
+</html>

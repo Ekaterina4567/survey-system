@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Прохождение опроса - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">SurveySystem</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/admin">Админ</a>
+            <a href="/survey" class="active">Опрос</a>
+            <a href="/login_page">Вход</a>
+            <a href="/register_page">Регистрация</a>
+        </div>
+    </nav>
+
+    <div id="code-step" class="step active">
+        <div class="search-container">
+            <div class="illustration">📋</div>
+            <h1>Прохождение опроса</h1>
+            <p>Введите код опроса, чтобы начать</p>
+            
+            <div class="code-form">
+                <div class="form-group">
+                    <label for="survey-code">Введите код опроса:</label>
+                    <input type="text" id="survey-code" placeholder="Например: MATH2024" required>
+                </div>
+                <button class="btn btn-primary" onclick="findSurvey()">Найти опрос</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="survey-step" class="step" style="display: none;">
+        <div class="survey-header">
+            <h2 id="display-survey-title">Название опроса</h2>
+        </div>
+
+        <div class="form-group">
+            <label for="student-name">Ваше имя</label>
+            <input type="text" id="student-name" placeholder="Иванов Иван" required>
+        </div>
+
+        <div class="form-group">
+            <label for="student-group">Группа</label>
+            <input type="text" id="student-group" placeholder="Группа 101" required>
+        </div>
+
+        <div class="progress-bar">
+            <div class="progress-fill" id="progress-fill"></div>
+        </div>
+
+        <div id="questions-container"></div>
+
+        <div class="survey-actions">
+            <button class="btn btn-secondary" id="prev-btn" onclick="prevQuestion()" style="display: none;">Назад</button>
+            <button class="btn btn-primary" id="next-btn" onclick="nextQuestion()">Далее</button>
+            <button class="btn btn-primary submit-btn" id="submit-btn" onclick="submitSurvey()" style="display: none;">Отправить ответы</button>
+        </div>
+    </div>
+
+    <div id="result-step" class="step" style="display: none;">
+        <div class="success-container">
+            <div class="success-icon">✅</div>
+            <h2>Ответы приняты</h2>
+            <div id="score-display"></div>
+            <a href="/" class="btn btn-secondary">На главную</a>
+        </div>
+    </div>
+
+    <div id="message" class="message"></div>
+
+    <script>
+        let currentSurvey = null;
+        let currentQuestionIndex = 0;
+        let userAnswers = {};
+        let timeSpent = {};
+        let questionStartTime = null;
+
+        async function findSurvey() {
+            const code = document.getElementById('survey-code').value.trim();
+            if (!code) {
+                showMessage('Введите код опроса', 'warning');
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/get_survey_by_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                
+                const data = await response.json();
+                
+                if (data.error) {
+                    showMessage(data.error, 'error');
+                    return;
+                }
+                
+                currentSurvey = data.survey;
+                document.getElementById('display-survey-title').textContent = currentSurvey.title;
+                
+                document.getElementById('code-step').style.display = 'none';
+                document.getElementById('survey-step').style.display = 'block';
+                
+                loadQuestions();
+                showMessage('Опрос найден! Заполните данные', 'success');
+                
+            } catch (error) {
+                showMessage('Ошибка при поиске опроса', 'error');
+            }
+        }
+
+        function loadQuestions() {
+            const container = document.getElementById('questions-container');
+            container.innerHTML = '';
+            
+            currentSurvey.questions.forEach((question, idx) => {
+                const questionDiv = document.createElement('div');
+                questionDiv.className = 'question-item fade-in';
+                questionDiv.id = `question-${idx}`;
+                questionDiv.style.display = idx === 0 ? 'block' : 'none';
+                
+                questionDiv.innerHTML = `
+                    <div class="question-text">${escapeHtml(question.question_text)}</div>
+                    <div class="options-group" id="options-${idx}">
+                        ${renderQuestionOptions(question, idx)}
+                    </div>
+                `;
+                
+                container.appendChild(questionDiv);
+            });
+            
+            updateProgress();
+            questionStartTime = Date.now();
+        }
+
+        function renderQuestionOptions(question, idx) {
+            if (question.question_type === 'text') {
+                return `<textarea class="text-answer" id="answer-${idx}" rows="3" placeholder="Введите ваш ответ..."></textarea>`;
+            }
+            
+            if (question.question_type === 'choice') {
+                return question.options.map(opt => `
+                    <label class="option-radio">
+                        <input type="radio" name="question-${idx}" value="${escapeHtml(opt)}">
+                        <span>${escapeHtml(opt)}</span>
+                    </label>
+                `).join('');
+            }
+            
+            if (question.question_type === 'checkbox') {
+                return question.options.map(opt => `
+                    <label class="option-checkbox">
+                        <input type="checkbox" name="question-${idx}" value="${escapeHtml(opt)}">
+                        <span>${escapeHtml(opt)}</span>
+                    </label>
+                `).join('');
+            }
+            
+            return '';
+        }
+
+        function saveCurrentAnswer() {
+            const currentQ = currentSurvey.questions[currentQuestionIndex];
+            let answer = null;
+            
+            if (currentQ.question_type === 'text') {
+                const textarea = document.getElementById(`answer-${currentQuestionIndex}`);
+                if (textarea) answer = textarea.value;
+            } 
+            else if (currentQ.question_type === 'choice') {
+                const selected = document.querySelector(`input[name="question-${currentQuestionIndex}"]:checked`);
+                if (selected) answer = selected.value;
+            } 
+            else if (currentQ.question_type === 'checkbox') {
+                const selected = document.querySelectorAll(`input[name="question-${currentQuestionIndex}"]:checked`);
+                if (selected.length > 0) {
+                    answer = Array.from(selected).map(cb => cb.value).join(',');
+                }
+            }
+            
+            if (answer !== null && answer !== '') {
+                userAnswers[currentSurvey.questions[currentQuestionIndex].id] = answer;
+            }
+            
+            if (questionStartTime) {
+                const timeSpentMs = Date.now() - questionStartTime;
+                timeSpent[currentSurvey.questions[currentQuestionIndex].id] = Math.floor(timeSpentMs / 1000);
+            }
+        }
+
+        function nextQuestion() {
+            saveCurrentAnswer();
+            
+            if (currentQuestionIndex < currentSurvey.questions.length - 1) {
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'none';
+                currentQuestionIndex++;
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'block';
+                questionStartTime = Date.now();
+                updateProgress();
+                updateButtons();
+            }
+        }
+
+        function prevQuestion() {
+            saveCurrentAnswer();
+            
+            if (currentQuestionIndex > 0) {
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'none';
+                currentQuestionIndex--;
+                document.getElementById(`question-${currentQuestionIndex}`).style.display = 'block';
+                questionStartTime = Date.now();
+                updateProgress();
+                updateButtons();
+            }
+        }
+
+        function updateProgress() {
+            const total = currentSurvey.questions.length;
+            const answered = Object.keys(userAnswers).length;
+            const percent = (answered / total) * 100;
+            document.getElementById('progress-fill').style.width = `${percent}%`;
+        }
+
+        function updateButtons() {
+            const prevBtn = document.getElementById('prev-btn');
+            const nextBtn = document.getElementById('next-btn');
+            const submitBtn = document.getElementById('submit-btn');
+            
+            if (currentQuestionIndex === 0) {
+                prevBtn.style.display = 'none';
+            } else {
+                prevBtn.style.display = 'flex';
+            }
+            
+            if (currentQuestionIndex === currentSurvey.questions.length - 1) {
+                nextBtn.style.display = 'none';
+                submitBtn.style.display = 'flex';
+            } else {
+                nextBtn.style.display = 'flex';
+                submitBtn.style.display = 'none';
+            }
+        }
+
+        async function submitSurvey() {
+            saveCurrentAnswer();
+            
+            const studentName = document.getElementById('student-name').value.trim();
+            const studentGroup = document.getElementById('student-group').value.trim();
+            
+            if (!studentName) {
+                showMessage('Введите ваше имя', 'warning');
+                return;
+            }
+            
+            if (!studentGroup) {
+                showMessage('Введите вашу группу', 'warning');
+                return;
+            }
+            
+            for (let i = 0; i < currentSurvey.questions.length; i++) {
+                const q = currentSurvey.questions[i];
+                if (!userAnswers[q.id] && q.question_type !== 'text') {
+                    showMessage(`Пожалуйста, ответьте на вопрос: ${q.question_text}`, 'warning');
+                    document.getElementById(`question-${currentQuestionIndex}`).style.display = 'none';
+                    currentQuestionIndex = i;
+                    document.getElementById(`question-${currentQuestionIndex}`).style.display = 'block';
+                    questionStartTime = Date.now();
+                    updateButtons();
+                    return;
+                }
+            }
+            
+            try {
+                const response = await fetch('/api/submit_survey', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        survey_id: currentSurvey.id,
+                        student_name: studentName,
+                        student_group: studentGroup,
+                        answers: userAnswers,
+                        time_spent: timeSpent
+                    })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    document.getElementById('survey-step').style.display = 'none';
+                    document.getElementById('result-step').style.display = 'block';
+                    
+                    if (result.is_test && result.score !== undefined) {
+                        const totalPoints = currentSurvey.questions.reduce((sum, q) => sum + (q.points || 1), 0);
+                        document.getElementById('score-display').innerHTML = `
+                            <div class="score-display">
+                                Ваш результат: ${result.score} / ${totalPoints}
+                            </div>
+                        `;
+                    } else {
+                        document.getElementById('score-display').innerHTML = `
+                            <div class="score-display">
+                                Спасибо за участие
+                            </div>
+                        `;
+                    }
+                } else {
+                    showMessage(result.error, 'error');
+                }
+            } catch (error) {
+                showMessage('Ошибка при отправке', 'error');
+            }
+        }
+
+        function showMessage(text, type) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.textContent = text;
+            msgDiv.className = `message ${type}`;
+            msgDiv.style.display = 'block';
+            setTimeout(() => {
+                msgDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+    </script>
+</body>
+</html>

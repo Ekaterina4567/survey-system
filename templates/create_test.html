@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Создание теста - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        .option-item {
+            display: flex;
+            gap: 0.75rem;
+            align-items: center;
+            margin-bottom: 0.75rem;
+            background: white;
+            padding: 0.75rem;
+            border-radius: 10px;
+            border: 1px solid #EDE3D8;
+        }
+        .option-item input[type="text"] {
+            flex: 1;
+        }
+        .question-block {
+            background: #F5EDE3;
+            padding: 1.5rem;
+            border-radius: 14px;
+            margin-bottom: 1.25rem;
+            border: 1px solid var(--border-light);
+        }
+        .correct-label {
+            display: flex;
+            align-items: center;
+            gap: 0.25rem;
+            white-space: nowrap;
+            font-size: 0.75rem;
+        }
+        .text-answer-input {
+            width: 100%;
+            padding: 0.75rem;
+            border: 1px solid var(--border-light);
+            border-radius: var(--radius-sm);
+            font-family: inherit;
+        }
+        .text-answer-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+        .help-text {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="nav-links" id="navLinks">
+            <!-- Заполняется JavaScript -->
+        </div>
+    </nav>
+
+    <div class="admin-header">
+        <h1>📝 Создание теста</h1>
+        <p>Создавайте тесты - их смогут проходить другие пользователи</p>
+    </div>
+
+    <div class="card">
+        <div class="form-group">
+            <label for="test-title">Название теста *</label>
+            <input type="text" id="test-title" placeholder="Например: Основы программирования">
+        </div>
+        
+        <div id="questions-container"></div>
+        
+        <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
+            <button class="btn btn-add" onclick="addQuestion()">➕ Добавить вопрос</button>
+            <button class="btn btn-primary" onclick="createTest()">🚀 Создать тест</button>
+            <button class="btn btn-secondary" onclick="goBack()">⬅ Назад</button>
+        </div>
+    </div>
+
+    <!-- Модальное окно для QR кода -->
+    <div id="qr-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
+        <div style="background: white; border-radius: 28px; padding: 2rem; max-width: 400px; text-align: center;">
+            <h3 id="qr-title"></h3>
+            <img id="qr-image" style="max-width: 250px; margin: 1rem 0;">
+            <p>Код: <strong id="qr-code-text"></strong></p>
+            <p>Ссылка: <span id="qr-url" style="font-size: 0.8rem; word-break: break-all;"></span></p>
+            <div style="display: flex; gap: 1rem; justify-content: center;">
+                <button class="btn btn-primary" onclick="closeQRModal()">Закрыть</button>
+                <button class="btn btn-secondary" onclick="copyTestCode()">📋 Копировать код</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let questionCounter = 0;
+        let lastCreatedCode = null;
+
+        // Загрузка навигации
+        async function loadNavigation() {
+            try {
+                const response = await fetch('/check_auth');
+                const data = await response.json();
+                const navLinks = document.getElementById('navLinks');
+                
+                if (data.authenticated) {
+                    navLinks.innerHTML = `
+                        <a href="/">Главная</a>
+                        <a href="/student_dashboard">Мои результаты</a>
+                        <a href="/take_test">Пройти тест</a>
+                        <a href="/create_test_page" class="active">Создать тест</a>
+                        <a href="#" onclick="logout()">Выход</a>
+                    `;
+                } else {
+                    navLinks.innerHTML = `
+                        <a href="/">Главная</a>
+                        <a href="/login_page">Вход</a>
+                        <a href="/register_page">Регистрация</a>
+                    `;
+                }
+            } catch (error) {
+                console.error('Error loading navigation:', error);
+            }
+        }
+
+        function addQuestion() {
+            const id = 'q_' + Date.now() + '_' + questionCounter++;
+            const questionNumber = document.querySelectorAll('.question-block').length + 1;
+            const html = `
+                <div class="question-block" id="${id}">
+                    <div class="question-header" style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
+                        <span class="question-number-badge">Вопрос ${questionNumber}</span>
+                        <button class="btn-remove" onclick="removeQuestion('${id}')">🗑 Удалить вопрос</button>
+                    </div>
+                    <div class="form-group">
+                        <label>Текст вопроса *</label>
+                        <input type="text" class="q-text" placeholder="Введите текст вопроса" style="width: 100%; padding: 0.75rem;">
+                    </div>
+                    <div class="form-group">
+                        <label>Тип вопроса</label>
+                        <select class="q-type" onchange="toggleOptions('${id}', this.value)" style="width: 100%; padding: 0.75rem;">
+                            <option value="choice">🔘 Один вариант (автопроверка)</option>
+                            <option value="checkbox">☑️ Несколько вариантов (автопроверка)</option>
+                            <option value="text">📝 Текстовый ответ (автопроверка)</option>
+                        </select>
+                    </div>
+                    <div class="options-container" id="opt-${id}" style="display: block;">
+                        <label>Варианты ответов</label>
+                        <div class="options-list"></div>
+                        <button type="button" class="btn-add" onclick="addOption('${id}')" style="margin-top: 0.5rem;">➕ Добавить вариант</button>
+                    </div>
+                    <div class="text-answer-container" id="text-${id}" style="display: none;">
+                        <div class="form-group">
+                            <label>📝 Правильный текстовый ответ *</label>
+                            <input type="text" class="text-correct-answer" placeholder="Введите правильный ответ (например: Москва)">
+                            <div class="help-text">Студент должен будет ввести этот ответ точно (регистр не важен, пробелы в начале и конце игнорируются)</div>
+                        </div>
+                    </div>
+                    <div class="form-group" style="margin-top: 1rem;">
+                        <label>⭐ Баллы за вопрос</label>
+                        <input type="number" class="q-points" value="1" min="1" style="width: 100px;">
+                    </div>
+                </div>
+            `;
+            document.getElementById('questions-container').insertAdjacentHTML('beforeend', html);
+            addOption(id);
+        }
+
+        function removeQuestion(questionId) {
+            if (confirm('Удалить этот вопрос?')) {
+                document.getElementById(questionId).remove();
+                renumberQuestions();
+            }
+        }
+
+        function renumberQuestions() {
+            const blocks = document.querySelectorAll('.question-block');
+            blocks.forEach((block, idx) => {
+                const badge = block.querySelector('.question-number-badge');
+                if (badge) badge.textContent = `Вопрос ${idx + 1}`;
+            });
+        }
+
+        function toggleOptions(id, type) {
+            const optionsContainer = document.getElementById(`opt-${id}`);
+            const textContainer = document.getElementById(`text-${id}`);
+            
+            if (type === 'text') {
+                optionsContainer.style.display = 'none';
+                textContainer.style.display = 'block';
+            } else {
+                optionsContainer.style.display = 'block';
+                textContainer.style.display = 'none';
+                // Если нет вариантов, добавим один
+                const optionsList = optionsContainer.querySelector('.options-list');
+                if (optionsList && optionsList.children.length === 0) {
+                    addOption(id);
+                }
+            }
+        }
+
+        function addOption(qId) {
+            const container = document.querySelector(`#${qId} .options-list`);
+            const qType = document.querySelector(`#${qId} .q-type`).value;
+            const radioName = `correct_${qId}`;
+            const html = `
+                <div class="option-item">
+                    <input type="text" class="opt-text" placeholder="Вариант ответа" style="flex: 1;">
+                    <label class="correct-label">
+                        <input type="${qType === 'choice' ? 'radio' : 'checkbox'}" class="opt-correct" name="${radioName}">
+                        ✅ Правильный
+                    </label>
+                    <button type="button" class="btn-icon" onclick="this.parentElement.remove()" title="Удалить вариант">🗑</button>
+                </div>
+            `;
+            container.insertAdjacentHTML('beforeend', html);
+        }
+
+        async function createTest() {
+            const title = document.getElementById('test-title').value.trim();
+            if (!title) {
+                alert('Введите название теста');
+                document.getElementById('test-title').focus();
+                return;
+            }
+            
+            const questions = [];
+            const blocks = document.querySelectorAll('.question-block');
+            
+            if (blocks.length === 0) {
+                alert('Добавьте хотя бы один вопрос');
+                return;
+            }
+            
+            for (let block of blocks) {
+                const text = block.querySelector('.q-text')?.value.trim();
+                const type = block.querySelector('.q-type')?.value;
+                const points = parseInt(block.querySelector('.q-points')?.value) || 1;
+                
+                if (!text) {
+                    alert('Заполните текст всех вопросов');
+                    block.querySelector('.q-text')?.focus();
+                    return;
+                }
+                
+                let options = [];
+                let correctAnswer = null;
+                
+                if (type === 'text') {
+                    // Для текстового вопроса - берём из поля ввода
+                    const textAnswer = block.querySelector('.text-correct-answer')?.value.trim();
+                    if (!textAnswer) {
+                        alert(`Для текстового вопроса "${text}" укажите правильный ответ`);
+                        block.querySelector('.text-correct-answer')?.focus();
+                        return;
+                    }
+                    correctAnswer = textAnswer.toLowerCase();
+                } else {
+                    // Для вопросов с вариантами
+                    const optionItems = block.querySelectorAll('.option-item');
+                    let correctOptions = [];
+                    
+                    for (let opt of optionItems) {
+                        const optText = opt.querySelector('.opt-text')?.value.trim();
+                        if (optText) {
+                            options.push(optText);
+                            if (opt.querySelector('.opt-correct')?.checked) {
+                                correctOptions.push(optText);
+                            }
+                        }
+                    }
+                    
+                    if (options.length === 0) {
+                        alert(`Для вопроса "${text}" добавьте варианты ответов`);
+                        return;
+                    }
+                    
+                    if (correctOptions.length === 0) {
+                        alert(`Для вопроса "${text}" отметьте правильный(е) вариант(ы)`);
+                        return;
+                    }
+                    
+                    correctAnswer = correctOptions.join(',');
+                }
+                
+                questions.push({
+                    text: text,
+                    type: type,
+                    options: options,
+                    correct_answer: correctAnswer,
+                    points: points
+                });
+            }
+            
+            // Показываем индикатор загрузки
+            const createBtn = document.querySelector('.btn-primary');
+            const originalText = createBtn.textContent;
+            createBtn.textContent = '⏳ Создание...';
+            createBtn.disabled = true;
+            
+            try {
+                const response = await fetch('/api/create_test', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title: title, questions: questions })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    lastCreatedCode = data.code;
+                    showQRModal(data.title, data.qr_code, data.code);
+                    
+                    // Очищаем форму
+                    document.getElementById('test-title').value = '';
+                    document.getElementById('questions-container').innerHTML = '';
+                    questionCounter = 0;
+                    
+                    // Добавляем первый вопрос заново
+                    addQuestion();
+                } else {
+                    alert('❌ Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                alert('❌ Ошибка подключения к серверу: ' + error.message);
+            } finally {
+                createBtn.textContent = originalText;
+                createBtn.disabled = false;
+            }
+        }
+
+        function showQRModal(title, qrBase64, code) {
+            const url = `${window.location.origin}/take_test?code=${code}`;
+            document.getElementById('qr-title').textContent = title;
+            document.getElementById('qr-image').src = `data:image/png;base64,${qrBase64}`;
+            document.getElementById('qr-code-text').textContent = code;
+            document.getElementById('qr-url').textContent = url;
+            document.getElementById('qr-modal').style.display = 'flex';
+        }
+
+        function closeQRModal() {
+            document.getElementById('qr-modal').style.display = 'none';
+            if (confirm('Тест создан! Перейти к списку ваших тестов?')) {
+                window.location.href = '/student_dashboard';
+            }
+        }
+
+        function copyTestCode() {
+            if (lastCreatedCode) {
+                navigator.clipboard.writeText(lastCreatedCode);
+                alert(`Код "${lastCreatedCode}" скопирован в буфер обмена`);
+            }
+        }
+
+        function goBack() {
+            if (confirm('Вернуться назад? Несохранённые изменения будут потеряны.')) {
+                window.location.href = '/student_dashboard';
+            }
+        }
+
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+
+        // Инициализация
+        loadNavigation();
+        
+        // Добавляем первый вопрос при загрузке
+        window.addEventListener('DOMContentLoaded', function() {
+            addQuestion();
+        });
+    </script>
+</body>
+</html>
