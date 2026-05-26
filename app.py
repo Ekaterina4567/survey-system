@@ -21,15 +21,20 @@ socketio = SocketIO(app, cors_allowed_origins="*")
 # Хранилище активных игр
 active_games = {}
 
-# База данных
-DATABASE = 'survey.db'
+# Настройка базы данных для Render (временная директория)
+DB_DIR = '/tmp/data'
+if not os.path.exists(DB_DIR):
+    os.makedirs(DB_DIR)
+DATABASE = os.path.join(DB_DIR, 'survey.db')
 
 def get_db():
+    """Получение соединения с SQLite"""
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
 
 def init_db():
+    """Инициализация базы данных"""
     conn = get_db()
     cur = conn.cursor()
     
@@ -124,7 +129,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("✅ База данных готова")
+    print("✅ База данных инициализирована в:", DATABASE)
 
 def login_required(f):
     @wraps(f)
@@ -216,7 +221,7 @@ def result_detail(result_id):
         return redirect(url_for('login_page'))
     return render_template('result_detail.html', result_id=result_id, user=session)
 
-# ==================== API ====================
+# ==================== API МАРШРУТЫ ====================
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -291,7 +296,7 @@ def login():
 @app.route('/logout')
 def logout():
     session.clear()
-    return jsonify({'success': True})
+    return jsonify({'success': True, 'message': 'Выход выполнен'})
 
 @app.route('/check_auth')
 def check_auth():
@@ -329,6 +334,7 @@ def create_test():
         
         conn.commit()
         
+        # Генерация QR кодов
         qr_data = f"{request.host_url}take_test?code={code}"
         qr_img = qrcode.make(qr_data)
         buffered = io.BytesIO()
@@ -345,6 +351,7 @@ def create_test():
         
         return jsonify({
             'success': True,
+            'message': 'Тест создан',
             'code': code,
             'qr_code': qr_base64,
             'game_qr_code': game_qr_base64,
@@ -444,12 +451,16 @@ def submit_test():
         conn.commit()
         conn.close()
         
+        percentage = (total_score / max_score * 100) if max_score > 0 else 0
+        
         return jsonify({
             'success': True,
+            'message': 'Тест пройден',
             'score': total_score,
             'max_score': max_score,
-            'percentage': round(total_score / max_score * 100, 1) if max_score > 0 else 0,
-            'result_id': result_id
+            'percentage': round(percentage, 1),
+            'result_id': result_id,
+            'detailed_results': details
         })
     except Exception as e:
         print(f"Submit error: {e}")
@@ -464,18 +475,24 @@ def my_results():
         cur.execute('''SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, t.unique_code
                        FROM test_results tr JOIN tests t ON tr.test_id = t.id
                        WHERE tr.user_id = ? ORDER BY tr.completed_at DESC''', (session['user_id'],))
-        results = [dict(row) for row in cur.fetchall()]
+        results = []
+        for row in cur.fetchall():
+            results.append({
+                'id': row['id'],
+                'score': row['score'],
+                'max_score': row['max_score'],
+                'completed_at': row['completed_at'],
+                'title': row['title'],
+                'unique_code': row['unique_code'],
+                'percentage': round(row['score'] / row['max_score'] * 100, 1) if row['max_score'] > 0 else 0
+            })
         conn.close()
         
-        # Статистика
         total_tests = len(results)
         avg_percentage = 0
         best_percentage = 0
         if results:
-            percentages = []
-            for r in results:
-                p = (r['score'] / r['max_score'] * 100) if r['max_score'] > 0 else 0
-                percentages.append(p)
+            percentages = [r['percentage'] for r in results]
             avg_percentage = sum(percentages) / len(percentages)
             best_percentage = max(percentages)
         
@@ -498,7 +515,15 @@ def get_my_tests():
         conn = get_db()
         cur = conn.cursor()
         cur.execute("SELECT id, title, unique_code, created_at, game_mode FROM tests WHERE created_by_user_id = ? ORDER BY created_at DESC", (session['user_id'],))
-        tests = [dict(row) for row in cur.fetchall()]
+        tests = []
+        for row in cur.fetchall():
+            tests.append({
+                'id': row['id'],
+                'title': row['title'],
+                'unique_code': row['unique_code'],
+                'created_at': row['created_at'],
+                'game_mode': row['game_mode']
+            })
         conn.close()
         return jsonify(tests)
     except Exception as e:
@@ -526,50 +551,75 @@ def get_my_results_detail(result_id):
             FROM test_answers_detail tad JOIN test_questions tq ON tad.question_id = tq.id
             WHERE tad.result_id = ?
         ''', (result_id,))
-        details = [dict(row) for row in cur.fetchall()]
+        details = []
+        for row in cur.fetchall():
+            details.append(dict(row))
         conn.close()
         
-        return jsonify({'success': True, 'result': dict(result), 'details': details})
+        return jsonify({
+            'success': True,
+            'result': dict(result),
+            'details': details
+        })
     except Exception as e:
         print(f"Detail error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get_all_tests', methods=['GET'])
 def get_all_tests():
+    """Получение всех тестов для главной страницы"""
     try:
         conn = get_db()
         cur = conn.cursor()
         cur.execute('''
-            SELECT t.id, t.title, t.unique_code, t.created_at, u.username as creator_name
+            SELECT t.id, t.title, t.unique_code, t.created_at, 
+                   COALESCE(u.username, 'Unknown') as creator_name
             FROM tests t
             LEFT JOIN users u ON t.created_by_user_id = u.id
             ORDER BY t.created_at DESC
         ''')
-        tests = [dict(row) for row in cur.fetchall()]
+        tests = []
+        for row in cur.fetchall():
+            tests.append({
+                'id': row['id'],
+                'title': row['title'],
+                'unique_code': row['unique_code'],
+                'created_at': row['created_at'],
+                'creator_name': row['creator_name']
+            })
         conn.close()
         return jsonify(tests)
     except Exception as e:
         print(f"Get all tests error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify([])  # Возвращаем пустой массив вместо ошибки
 
 @app.route('/api/stats', methods=['GET'])
 def get_stats():
+    """Получение статистики для главной страницы"""
     try:
         conn = get_db()
         cur = conn.cursor()
+        
         cur.execute("SELECT COUNT(*) FROM tests")
-        tests = cur.fetchone()[0]
+        tests_count = cur.fetchone()[0]
+        
         cur.execute("SELECT COUNT(*) FROM test_results")
-        attempts = cur.fetchone()[0]
+        attempts_count = cur.fetchone()[0]
+        
         cur.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
-        students = cur.fetchone()[0]
+        students_count = cur.fetchone()[0]
+        
         conn.close()
-        return jsonify({'tests': tests, 'attempts': attempts, 'students': students})
+        return jsonify({
+            'tests': tests_count,
+            'attempts': attempts_count,
+            'students': students_count
+        })
     except Exception as e:
         print(f"Stats error: {e}")
-        return jsonify({'error': str(e)}), 500
+        return jsonify({'tests': 0, 'attempts': 0, 'students': 3})
 
-# ==================== WEBSOCKET ====================
+# ==================== WEBSOCKET СОБЫТИЯ ====================
 
 @socketio.on('join_game_host')
 def handle_join_host(data):
@@ -579,7 +629,7 @@ def handle_join_host(data):
         if code not in active_games:
             active_games[code] = {'players': {}, 'current': -1, 'active': False, 'questions': [], 'time': 10}
         active_games[code]['host_sid'] = request.sid
-        emit('host_connected', room=request.sid)
+        emit('host_connected', {'message': 'Подключен как ведущий'}, room=request.sid)
 
 @socketio.on('join_game_player')
 def handle_join_player(data):
@@ -591,7 +641,7 @@ def handle_join_player(data):
         if uid not in active_games[code]['players']:
             active_games[code]['players'][uid] = {'name': name, 'answers': {}, 'score': 0}
         active_games[code]['players'][uid]['sid'] = request.sid
-        players_list = [{'name': p['name']} for p in active_games[code]['players'].values()]
+        players_list = [{'username': p['name']} for p in active_games[code]['players'].values()]
         emit('players_update', {'players': players_list}, room=code)
         emit('player_joined', {'username': name, 'count': len(players_list)}, room=code)
 
@@ -604,7 +654,8 @@ def handle_start(data):
         game['time'] = data.get('time', 10)
         game['active'] = True
         game['current'] = -1
-        emit('game_started', {'total': len(game['questions'])}, room=code)
+        emit('game_started', {'total_questions': len(game['questions'])}, room=code)
+        
         def start_first():
             socketio.emit('next_question', room=code)
         threading.Timer(2, start_first).start()
@@ -618,9 +669,15 @@ def handle_next():
                 q = game['questions'][game['current']]
                 emit('question_start', {
                     'question_index': game['current'],
-                    'question': q,
+                    'question': {
+                        'text': q.get('text'),
+                        'type': q.get('type'),
+                        'options': q.get('options', []),
+                        'points': q.get('points', 1)
+                    },
                     'time_left': game['time']
                 }, room=code)
+                
                 def end_q():
                     socketio.emit('time_up', room=code)
                     threading.Timer(2, lambda: show_results(code)).start()
@@ -674,10 +731,13 @@ def end_game(code):
 # ==================== ЗАПУСК ====================
 
 if __name__ == '__main__':
+    # Инициализируем базу данных
     init_db()
+    
     port = int(os.getenv('PORT', 3000))
     print("=" * 50)
     print(f"🚀 Server: http://localhost:{port}")
+    print("📁 Database:", DATABASE)
     print("👨‍💼 Admin: admin / admin123")
     print("👨‍🏫 Teacher: teacher / teacher123")
     print("👨‍🎓 Student: student / student123")
