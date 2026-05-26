@@ -234,6 +234,11 @@ def teacher_dashboard():
         return redirect(url_for('login_page'))
     return redirect(url_for('student_dashboard'))
 
+@app.route('/qr_redirect')
+def qr_redirect():
+    """Страница для редиректа через QR-код"""
+    return render_template('qr_redirect.html')
+
 # ===== API =====
 
 @app.route('/register', methods=['POST'])
