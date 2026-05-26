@@ -4,113 +4,120 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>SurveySystem - Платформа тестирования</title>
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="stylesheet" href="style.css">
+    <!-- Шрифт Inter, который у вас подключен -->
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
+
+    <!-- НАВИГАЦИЯ -->
     <nav class="navbar">
-        <div class="nav-brand">📋 SurveySystem</div>
-        <div class="nav-links" id="nav-links">
+        <div class="nav-left">
+            <!-- МЕСТО ДЛЯ ВАШЕГО ЛОГОТИПА -->
+            <!-- Когда будет картинка, удалите div ниже и вставьте: <img src="logo.png" class="logo-img"> -->
+            <div class="logo-placeholder">
+                <span class="logo-icon">📋</span> SurveySystem
+            </div>
+        </div>
+        <div class="nav-links">
             <a href="/" class="active">Главная</a>
+            <a href="/take_test">Пройти тест</a>
             <a href="/login_page">Вход</a>
-            <a href="/register_page">Регистрация</a>
+            <a href="/register_page" class="btn btn-primary btn-sm">Регистрация</a>
         </div>
     </nav>
 
-    <div class="hero-section">
-        <div class="hero-content">
-            <h1>Система <span class="highlight">онлайн тестирования</span></h1>
-            <p>Создавайте тесты, проходите их и получайте результаты. Вся статистика сохраняется в вашем личном кабинете.</p>
+    <!-- HERO СЕКЦИЯ (Дизайн в стиле референса) -->
+    <main class="hero-wrapper">
+        
+        <!-- ЛЕВАЯ ЧАСТЬ: Текст -->
+        <div class="hero-content fade-in">
+            <div class="badge">✨ Онлайн-тестирование</div>
+            <h1>Создавайте тесты <br>и <span class="highlight">получайте знания</span></h1>
+            <p>
+                Создавайте интерактивные опросы, проходите тесты и получайте мгновенные результаты. 
+                Вся статистика сохраняется в вашем личном кабинете.
+            </p>
             <div class="hero-buttons">
-                <a href="/take_test" class="btn btn-primary">📝 Пройти тест</a>
-                <a href="/create_test_page" class="btn btn-secondary">✨ Создать тест</a>
+                <a href="/take_test" class="btn btn-primary"> Пройти тест</a>
+                <a href="/create_test_page" class="btn btn-outline">✨ Создать тест</a>
+            </div>
+            
+            <!-- Мини-статистика под текстом -->
+            <div class="hero-stats">
+                <div class="h-stat">
+                    <strong>150+</strong>
+                    <span>Тестов</span>
+                </div>
+                <div class="h-stat">
+                    <strong>2k+</strong>
+                    <span>Студентов</span>
+                </div>
             </div>
         </div>
-        <div class="hero-illustration">
-            <div class="illustration-box">📋</div>
-            <div style="font-weight: 600; color: #3D2B1F; margin-top: 1rem;">Тест-система</div>
-            <div style="font-size: 0.8rem; color: #7A6B5D;">Сохраняйте результаты</div>
-        </div>
-    </div>
 
-    <div class="features-section">
+        <!-- ПРАВАЯ ЧАСТЬ: Большая иллюстрация (аналог Луны) -->
+        <div class="hero-visual fade-in">
+            <!-- Фоновый круг (Луна) -->
+            <div class="big-moon"></div>
+            
+            <!-- Плавающие элементы (Вместо зайцев - элементы теста) -->
+            <div class="float-card card-1">
+                <div class="card-line"></div>
+                <div class="card-check">✓</div>
+            </div>
+            
+            <div class="float-card card-2">
+                <div class="card-line short"></div>
+                <div class="card-circle"></div>
+            </div>
+            
+            <div class="float-card card-3">
+                <div class="card-line"></div>
+                <div class="card-line short"></div>
+            </div>
+            
+            <!-- Декоративные точки -->
+            <div class="dot dot-1"></div>
+            <div class="dot dot-2"></div>
+            <div class="dot dot-3"></div>
+        </div>
+    </main>
+
+    <!-- БЛОК ПРЕИМУЩЕСТВ (Карточки) -->
+    <section class="features-section">
         <div class="feature-card">
-            <div class="feature-icon">📝</div>
+            <div class="feature-icon">‍🎓</div>
             <h3>Для студентов</h3>
-            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется в личном кабинете.</p>
+            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется.</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">👨‍💼</div>
             <h3>Для преподавателей</h3>
-            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты каждого студента.</p>
+            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">📊</div>
+            <div class="feature-icon"></div>
             <h3>Статистика</h3>
             <p>Детальная аналитика: средний балл, лучшие результаты, прогресс каждого студента.</p>
         </div>
-    </div>
+    </section>
 
+    <!-- НИЖНЯЯ СТАТИСТИКА (Баннер) -->
     <div class="stats-banner">
         <div class="stat-item">
-            <div class="stat-number" id="active-tests">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Всего тестов</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="total-attempts">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Пройдено тестов</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="total-users">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Студентов</div>
         </div>
     </div>
 
-    <script>
-        async function loadStats() {
-    try {
-        // Проверяем авторизацию
-        const authResponse = await fetch('/check_auth');
-        const authData = await authResponse.json();
-        
-        // Если пользователь не авторизован - не загружаем статистику
-        if (!authData.authenticated) {
-            console.log('Пользователь не авторизован, статистика не загружена');
-            return;
-        }
-        
-        const response = await fetch('/api/get_all_tests');
-        if (response.ok) {
-            const tests = await response.json();
-            const statsDiv = document.getElementById('active-tests');
-            if (statsDiv) {
-                statsDiv.textContent = tests.length;
-            }
-        }
-    } catch (error) {
-        console.error('Error loading stats:', error);
-    }
-}
-        
-        // Проверяем авторизацию для отображения правильных кнопок
-        fetch('/check_auth')
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                const navLinks = document.getElementById('nav-links');
-                if (data.authenticated && navLinks) {
-                    if (data.role === 'admin') {
-                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/admin">Админ панель</a><a href="#" onclick="logout()">Выход</a>';
-                    } else {
-                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/student_dashboard">Мои результаты</a><a href="/take_test">Пройти тест</a><a href="/create_test_page">Создать тест</a><a href="#" onclick="logout()">Выход</a>';
-                    }
-                }
-            })
-            .catch(function(error) { console.error('Auth check error:', error); });
-            
-        async function logout() {
-            await fetch('/logout');
-            window.location.href = '/';
-        }
-    </script>
 </body>
 </html>
