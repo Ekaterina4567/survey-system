@@ -26,6 +26,11 @@
             border-radius: var(--radius-md);
             padding: 1rem;
             border: 1px solid var(--border-light);
+            transition: all 0.2s;
+        }
+        .my-test-card:hover {
+            border-color: var(--primary-light);
+            box-shadow: var(--shadow-sm);
         }
         .test-actions {
             display: flex;
@@ -39,9 +44,38 @@
         }
         .my-tests-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
             gap: 1rem;
             margin-top: 1rem;
+        }
+        .results-table-wrapper {
+            overflow-x: auto;
+            margin-top: 1rem;
+            padding-top: 1rem;
+            border-top: 1px solid var(--border-light);
+        }
+        .results-stats {
+            display: flex;
+            gap: 1rem;
+            justify-content: space-around;
+            margin-bottom: 1rem;
+            flex-wrap: wrap;
+        }
+        .stat-mini {
+            text-align: center;
+            background: var(--primary-soft);
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
+            min-width: 80px;
+        }
+        .stat-mini .number {
+            font-size: 1.2rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+        .stat-mini .label {
+            font-size: 0.6rem;
+            color: var(--text-secondary);
         }
     </style>
 </head>
@@ -170,21 +204,27 @@
                 
                 if (tests.length > 0) {
                     let html = '<div class="my-tests-grid">';
-                    tests.forEach(test => {
+                    for (const test of tests) {
                         html += `
                             <div class="my-test-card">
-                                <strong>${escapeHtml(test.title)}</strong>
-                                <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">
-                                    Код: ${test.unique_code} • Попыток: ${test.attempts_count || 0}
+                                <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 0.5rem;">
+                                    <div>
+                                        <strong>${escapeHtml(test.title)}</strong>
+                                        <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.25rem;">
+                                            Код: ${test.unique_code} • Попыток: ${test.attempts_count || 0}
+                                        </div>
+                                    </div>
+                                    <div class="test-actions" style="margin-top: 0;">
+                                        <a href="/take_test?code=${test.unique_code}" class="btn btn-primary btn-small">📝 Пройти</a>
+                                        <a href="/edit_test_page/${test.id}" class="btn btn-secondary btn-small">✏️ Редактировать</a>
+                                        <button class="btn btn-outline btn-small" onclick="copyCode('${test.unique_code}')">📋 Код</button>
+                                        <button class="btn btn-outline btn-small" onclick="toggleResults(${test.id}, '${escapeHtml(test.title)}')">📊 Результаты</button>
+                                    </div>
                                 </div>
-                                <div class="test-actions">
-                                    <a href="/take_test?code=${test.unique_code}" class="btn btn-primary btn-small">📝 Пройти</a>
-                                    <a href="/edit_test_page/${test.id}" class="btn btn-secondary btn-small">✏️ Редактировать</a>
-                                    <button class="btn btn-outline btn-small" onclick="copyCode('${test.unique_code}')">📋 Код</button>
-                                </div>
+                                <div id="results-${test.id}" style="display: none;"></div>
                             </div>
                         `;
-                    });
+                    }
                     html += '</div>';
                     document.getElementById('my-tests-container').innerHTML = html;
                 } else {
@@ -198,6 +238,105 @@
             } catch (error) {
                 console.error('Error:', error);
                 document.getElementById('my-tests-container').innerHTML = '<p>Ошибка загрузки</p>';
+            }
+        }
+
+        // Функция для показа/скрытия результатов теста
+        async function toggleResults(testId, testTitle) {
+            const resultsDiv = document.getElementById(`results-${testId}`);
+            
+            // Если уже открыто - закрываем
+            if (resultsDiv.style.display === 'block') {
+                resultsDiv.style.display = 'none';
+                return;
+            }
+            
+            // Показываем загрузку
+            resultsDiv.style.display = 'block';
+            resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem;">📊 Загрузка результатов...</div>';
+            
+            try {
+                const response = await fetch(`/api/get_test_results/${testId}`);
+                const data = await response.json();
+                
+                if (!data.success) {
+                    resultsDiv.innerHTML = `<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--error);">❌ ${data.error}</div>`;
+                    return;
+                }
+                
+                if (data.results.length === 0) {
+                    resultsDiv.innerHTML = `<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--text-muted);">📊 Пока нет результатов по этому тесту</div>`;
+                    return;
+                }
+                
+                // Статистика
+                let statsHtml = `
+                    <div class="results-stats">
+                        <div class="stat-mini">
+                            <div class="number">${data.stats.total_attempts}</div>
+                            <div class="label">Всего попыток</div>
+                        </div>
+                        <div class="stat-mini" style="background: var(--success-light);">
+                            <div class="number" style="color: var(--success);">${Math.round(data.stats.avg_score || 0)}%</div>
+                            <div class="label">Средний балл</div>
+                        </div>
+                        <div class="stat-mini" style="background: var(--warning-light);">
+                            <div class="number" style="color: var(--warning);">${data.stats.max_score || 0}</div>
+                            <div class="label">Макс. балл</div>
+                        </div>
+                    </div>
+                    <div class="results-table-wrapper">
+                        <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
+                            <thead>
+                                <tr style="background: var(--primary-soft);">
+                                    <th style="padding: 0.5rem; text-align: left;">👤 ФИО студента</th>
+                                    <th style="padding: 0.5rem; text-align: left;">📧 Email</th>
+                                    <th style="padding: 0.5rem; text-align: left;">🎯 Результат</th>
+                                    <th style="padding: 0.5rem; text-align: left;">📊 %</th>
+                                    <th style="padding: 0.5rem; text-align: left;">⏰ Время</th>
+                                    <th style="padding: 0.5rem; text-align: center;">🔍</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                `;
+                
+                for (const r of data.results) {
+                    const percentage = r.percentage || 0;
+                    let percentColor = percentage >= 80 ? '#2E7D32' : (percentage >= 60 ? '#F57C00' : '#C62828');
+                    let percentBg = percentage >= 80 ? '#E8F5E9' : (percentage >= 60 ? '#FFF3E0' : '#FFEBEE');
+                    
+                    const completedDate = new Date(r.completed_at);
+                    const formattedDate = completedDate.toLocaleString('ru-RU', {
+                        day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+                    });
+                    
+                    statsHtml += `
+                        <tr style="border-bottom: 1px solid var(--border-light);">
+                            <td style="padding: 0.5rem;"><strong>${escapeHtml(r.full_name || r.username)}</strong></td>
+                            <td style="padding: 0.5rem; font-size: 0.7rem;">${escapeHtml(r.email)}</td>
+                            <td style="padding: 0.5rem;">${r.score} / ${r.max_score}</td>
+                            <td style="padding: 0.5rem;">
+                                <span style="background: ${percentBg}; color: ${percentColor}; padding: 0.2rem 0.5rem; border-radius: 20px; font-weight: 700;">${percentage}%</span>
+                            </td>
+                            <td style="padding: 0.5rem; font-size: 0.7rem;">${formattedDate}</td>
+                            <td style="padding: 0.5rem; text-align: center;">
+                                <button class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.65rem;" onclick="viewResultDetail(${r.id})">🔍</button>
+                            </td>
+                        </tr>
+                    `;
+                }
+                
+                statsHtml += `
+                            </tbody>
+                        </table>
+                    </div>
+                `;
+                
+                resultsDiv.innerHTML = statsHtml;
+                
+            } catch (error) {
+                console.error('Error loading results:', error);
+                resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--error);">❌ Ошибка загрузки</div>';
             }
         }
 
