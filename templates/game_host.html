@@ -15,38 +15,18 @@
         }
         .player-card {
             background: white;
-            border-radius: var(--radius-md);
+            border-radius: 10px;
             padding: 1rem;
-            border: 1px solid var(--border-light);
+            border: 1px solid #EDE3D8;
             text-align: center;
-        }
-        .player-card.answered {
-            background: var(--success-light);
-            border-color: var(--success);
         }
         .stats-panel {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
             color: white;
             padding: 1.5rem;
-            border-radius: var(--radius-lg);
+            border-radius: 20px;
             margin-bottom: 1.5rem;
             text-align: center;
-        }
-        .stats-panel h2 {
-            font-size: 2rem;
-            margin-bottom: 0.5rem;
-        }
-        .question-area {
-            background: var(--primary-soft);
-            border-radius: var(--radius-lg);
-            padding: 1.5rem;
-            margin-bottom: 1.5rem;
-            text-align: center;
-        }
-        .question-text {
-            font-size: 1.3rem;
-            font-weight: 600;
-            margin-bottom: 1rem;
         }
         .timer-circle {
             width: 100px;
@@ -59,34 +39,35 @@
             margin: 1rem auto;
             font-size: 2.5rem;
             font-weight: 800;
-            color: var(--primary);
-            box-shadow: var(--shadow-md);
+            color: #8B5E3C;
+        }
+        .question-area {
+            background: #F5EDE3;
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .question-text {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
         }
         .result-item {
             background: white;
-            border-radius: var(--radius-sm);
+            border-radius: 10px;
             padding: 0.5rem 1rem;
             margin-bottom: 0.5rem;
             display: flex;
             justify-content: space-between;
-            align-items: center;
-        }
-        .result-item.correct {
-            background: var(--success-light);
-            border-left: 3px solid var(--success);
-        }
-        .result-item.wrong {
-            background: var(--error-light);
-            border-left: 3px solid var(--error);
         }
         .final-result {
             background: white;
-            border-radius: var(--radius-lg);
+            border-radius: 10px;
             padding: 1rem;
             margin-bottom: 0.5rem;
             display: flex;
             justify-content: space-between;
-            align-items: center;
         }
         .final-result.top {
             background: linear-gradient(135deg, #FFD700, #FFA500);
@@ -95,8 +76,12 @@
         .waiting-players {
             text-align: center;
             padding: 2rem;
-            background: var(--primary-soft);
-            border-radius: var(--radius-lg);
+            background: #F5EDE3;
+            border-radius: 20px;
+        }
+        .btn-start {
+            font-size: 1.2rem;
+            padding: 1rem 2rem;
         }
     </style>
 </head>
@@ -105,11 +90,12 @@
         <div class="nav-brand">🎮 SurveySystem Game</div>
         <div class="nav-links">
             <a href="/">Главная</a>
+            <a href="/student_dashboard">Мои результаты</a>
             <a href="#" onclick="logout()">Выход</a>
         </div>
     </nav>
 
-    <div class="card" id="main-container">
+    <div class="card">
         <div id="setup-screen">
             <div class="admin-header">
                 <h1>🎮 Управление игрой</h1>
@@ -119,10 +105,10 @@
             <div id="players-list" class="players-grid"></div>
             
             <div id="game-controls" style="text-align: center;">
-                <button id="start-game-btn" class="btn btn-primary" onclick="startGame()" style="font-size: 1.2rem; padding: 1rem 2rem;">
+                <button id="start-game-btn" class="btn btn-primary btn-start" onclick="startGame()">
                     🚀 Начать игру
                 </button>
-                <p style="margin-top: 1rem; color: var(--text-muted);">
+                <p style="margin-top: 1rem; color: #7A6B5D;">
                     Попросите учеников отсканировать QR-код и присоединиться к игре
                 </p>
             </div>
@@ -136,13 +122,11 @@
             
             <div class="question-area">
                 <div class="question-text" id="question-text">Загрузка...</div>
-                <div id="question-options" class="options-group"></div>
             </div>
             
             <div id="question-results" style="display: none;">
                 <h3>📊 Результаты вопроса</h3>
                 <div id="results-stats"></div>
-                <div id="players-answers"></div>
             </div>
         </div>
 
@@ -161,23 +145,19 @@
     <script>
         const code = window.location.pathname.split('/').pop();
         let socket = null;
-        let currentTest = null;
         let questions = [];
-        let currentQuestionIndex = -1;
         let timePerQuestion = 10;
         let isGameActive = false;
 
         document.getElementById('game-code-display').innerText = code;
 
-        // Подключение WebSocket
         socket = io();
 
         socket.on('connect', () => {
             console.log('Connected to server');
             socket.emit('join_game_host', {
                 game_code: code,
-                time_per_question: timePerQuestion,
-                total_questions: questions.length
+                time_per_question: timePerQuestion
             });
         });
 
@@ -189,27 +169,20 @@
             showToast(`🎉 ${data.username} присоединился! (${data.count} игроков)`);
         });
 
-        socket.on('player_left', (data) => {
-            showToast(`👋 Игрок покинул игру`);
-            loadTestData();
-        });
-
         socket.on('game_started', (data) => {
             isGameActive = true;
             document.getElementById('setup-screen').style.display = 'none';
             document.getElementById('game-screen').style.display = 'block';
             document.getElementById('final-screen').style.display = 'none';
             document.getElementById('total-questions').innerText = data.total_questions;
-            showToast('🎮 Игра началась! Готовьтесь к первому вопросу!');
+            showToast('🎮 Игра началась!');
         });
 
         socket.on('question_start', (data) => {
-            currentQuestionIndex = data.question_index;
-            displayQuestion(data.question, data.time_left);
+            displayQuestion(data.question);
             startTimer(data.time_left);
-            
+            document.getElementById('current-question-num').innerText = data.question_index + 1;
             document.getElementById('question-results').style.display = 'none';
-            document.getElementById('current-question-num').innerText = currentQuestionIndex + 1;
         });
 
         socket.on('time_up', () => {
@@ -217,12 +190,18 @@
         });
 
         socket.on('question_results', (data) => {
-            displayQuestionResults(data);
+            document.getElementById('question-results').style.display = 'block';
+            document.getElementById('results-stats').innerHTML = `
+                <div style="text-align: center; padding: 1rem;">
+                    <div style="font-size: 2rem;">${data.correct_count} / ${data.total_players}</div>
+                    <div>учеников ответили правильно</div>
+                    <div>(${data.percentage}%)</div>
+                </div>
+            `;
         });
 
         socket.on('game_ended', (data) => {
             displayFinalResults(data.results);
-            isGameActive = false;
         });
 
         async function loadTestData() {
@@ -235,11 +214,8 @@
                 const data = await response.json();
                 
                 if (data.success) {
-                    currentTest = data.test;
-                    questions = currentTest.questions;
-                    timePerQuestion = currentTest.time_per_question || 10;
-                    
-                    updatePlayersList([]);
+                    questions = data.test.questions;
+                    timePerQuestion = data.test.time_per_question || 10;
                 }
             } catch (error) {
                 console.error('Error loading test:', error);
@@ -248,8 +224,8 @@
 
         function updatePlayersList(players) {
             const container = document.getElementById('players-list');
-            if (players.length === 0) {
-                container.innerHTML = '<div class="waiting-players">⏳ Ожидание подключения игроков...<br><small>Попросите учеников отсканировать QR-код</small></div>';
+            if (!players || players.length === 0) {
+                container.innerHTML = '<div class="waiting-players">⏳ Ожидание подключения игроков...</div>';
                 return;
             }
             
@@ -260,26 +236,13 @@
             `).join('');
         }
 
-        function displayQuestion(question, timeLeft) {
+        function displayQuestion(question) {
             document.getElementById('question-text').innerHTML = escapeHtml(question.text);
-            
-            const optionsContainer = document.getElementById('question-options');
-            if (question.type === 'choice' || question.type === 'checkbox') {
-                optionsContainer.innerHTML = question.options.map(opt => `
-                    <label class="option-radio">
-                        <input type="${question.type === 'choice' ? 'radio' : 'checkbox'}" name="question" value="${escapeHtml(opt)}" disabled>
-                        <span>${escapeHtml(opt)}</span>
-                    </label>
-                `).join('');
-            } else {
-                optionsContainer.innerHTML = `<textarea class="text-answer" placeholder="Текстовый ответ..." disabled></textarea>`;
-            }
         }
 
         function startTimer(seconds) {
             let timeLeft = seconds;
             const timerEl = document.getElementById('timer-display');
-            
             const interval = setInterval(() => {
                 if (!isGameActive) {
                     clearInterval(interval);
@@ -293,17 +256,6 @@
             }, 1000);
         }
 
-        function displayQuestionResults(data) {
-            document.getElementById('question-results').style.display = 'block';
-            document.getElementById('results-stats').innerHTML = `
-                <div style="text-align: center; padding: 1rem;">
-                    <div style="font-size: 2rem;">${data.correct_count} / ${data.total_players}</div>
-                    <div>учеников ответили правильно</div>
-                    <div style="font-size: 0.9rem; margin-top: 0.5rem;">(${data.percentage}%)</div>
-                </div>
-            `;
-        }
-
         function displayFinalResults(results) {
             document.getElementById('game-screen').style.display = 'none';
             document.getElementById('final-screen').style.display = 'block';
@@ -311,10 +263,8 @@
             const container = document.getElementById('final-results');
             container.innerHTML = results.map((r, idx) => `
                 <div class="final-result ${idx === 0 ? 'top' : ''}">
-                    <div>
-                        <strong>${idx + 1}. ${escapeHtml(r.username)}</strong>
-                        <div style="font-size: 0.8rem;">✅ ${r.correct_answers} правильных ответов</div>
-                    </div>
+                    <div><strong>${idx + 1}. ${escapeHtml(r.username)}</strong><br>
+                    <small>✅ ${r.correct_answers} правильных ответов</small></div>
                     <div style="font-size: 1.5rem; font-weight: 700;">${r.score} / ${r.total_possible}</div>
                 </div>
             `).join('');
@@ -322,7 +272,7 @@
 
         function startGame() {
             if (questions.length === 0) {
-                alert('Загрузка теста... Попробуйте еще раз');
+                alert('Загрузка теста...');
                 loadTestData();
                 setTimeout(() => startGame(), 1000);
                 return;
@@ -335,7 +285,7 @@
             });
             
             document.getElementById('start-game-btn').disabled = true;
-            document.getElementById('start-game-btn').innerText = '⏳ Игра началась...';
+            document.getElementById('start-game-btn').innerHTML = '⏳ Игра началась...';
         }
 
         function showToast(message) {
@@ -344,12 +294,11 @@
                 position: fixed;
                 bottom: 20px;
                 right: 20px;
-                background: var(--primary);
+                background: #8B5E3C;
                 color: white;
                 padding: 0.75rem 1.5rem;
                 border-radius: 9999px;
                 z-index: 1000;
-                animation: fadeIn 0.3s ease;
             `;
             toast.innerText = message;
             document.body.appendChild(toast);
