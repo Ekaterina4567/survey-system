@@ -18,7 +18,10 @@ app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
 socketio = SocketIO(app, cors_allowed_origins="*")
 
+# Хранилище активных игр
 active_games = {}
+
+# База данных
 DATABASE = 'survey.db'
 
 def get_db():
@@ -30,6 +33,7 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
     
+    # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,6 +48,7 @@ def init_db():
         )
     ''')
     
+    # Таблица тестов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -57,6 +62,7 @@ def init_db():
         )
     ''')
     
+    # Таблица вопросов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -70,6 +76,7 @@ def init_db():
         )
     ''')
     
+    # Таблица результатов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -83,6 +90,7 @@ def init_db():
         )
     ''')
     
+    # Таблица детальных ответов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_answers_detail (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -95,7 +103,7 @@ def init_db():
         )
     ''')
     
-    # Тестовые пользователи
+    # Создаём тестовых пользователей
     admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
     cur.execute("SELECT id FROM users WHERE username = 'admin'")
     if not cur.fetchone():
@@ -116,7 +124,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("✅ Database ready")
+    print("✅ База данных готова")
 
 def login_required(f):
     @wraps(f)
@@ -458,8 +466,29 @@ def my_results():
                        WHERE tr.user_id = ? ORDER BY tr.completed_at DESC''', (session['user_id'],))
         results = [dict(row) for row in cur.fetchall()]
         conn.close()
-        return jsonify({'results': results})
+        
+        # Статистика
+        total_tests = len(results)
+        avg_percentage = 0
+        best_percentage = 0
+        if results:
+            percentages = []
+            for r in results:
+                p = (r['score'] / r['max_score'] * 100) if r['max_score'] > 0 else 0
+                percentages.append(p)
+            avg_percentage = sum(percentages) / len(percentages)
+            best_percentage = max(percentages)
+        
+        return jsonify({
+            'results': results,
+            'stats': {
+                'total_tests': total_tests,
+                'avg_percentage': round(avg_percentage, 1),
+                'best_percentage': round(best_percentage, 1)
+            }
+        })
     except Exception as e:
+        print(f"My results error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get_my_tests', methods=['GET'])
@@ -473,6 +502,71 @@ def get_my_tests():
         conn.close()
         return jsonify(tests)
     except Exception as e:
+        print(f"Get my tests error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_my_results_detail/<int:result_id>', methods=['GET'])
+@login_required
+def get_my_results_detail(result_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
+            FROM test_results tr JOIN tests t ON tr.test_id = t.id
+            WHERE tr.id = ? AND tr.user_id = ?
+        ''', (result_id, session['user_id']))
+        result = cur.fetchone()
+        if not result:
+            conn.close()
+            return jsonify({'error': 'Результат не найден'}), 404
+        
+        cur.execute('''
+            SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
+            FROM test_answers_detail tad JOIN test_questions tq ON tad.question_id = tq.id
+            WHERE tad.result_id = ?
+        ''', (result_id,))
+        details = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        
+        return jsonify({'success': True, 'result': dict(result), 'details': details})
+    except Exception as e:
+        print(f"Detail error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_all_tests', methods=['GET'])
+def get_all_tests():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute('''
+            SELECT t.id, t.title, t.unique_code, t.created_at, u.username as creator_name
+            FROM tests t
+            LEFT JOIN users u ON t.created_by_user_id = u.id
+            ORDER BY t.created_at DESC
+        ''')
+        tests = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        return jsonify(tests)
+    except Exception as e:
+        print(f"Get all tests error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/stats', methods=['GET'])
+def get_stats():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM tests")
+        tests = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM test_results")
+        attempts = cur.fetchone()[0]
+        cur.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
+        students = cur.fetchone()[0]
+        conn.close()
+        return jsonify({'tests': tests, 'attempts': attempts, 'students': students})
+    except Exception as e:
+        print(f"Stats error: {e}")
         return jsonify({'error': str(e)}), 500
 
 # ==================== WEBSOCKET ====================
@@ -499,6 +593,7 @@ def handle_join_player(data):
         active_games[code]['players'][uid]['sid'] = request.sid
         players_list = [{'name': p['name']} for p in active_games[code]['players'].values()]
         emit('players_update', {'players': players_list}, room=code)
+        emit('player_joined', {'username': name, 'count': len(players_list)}, room=code)
 
 @socketio.on('start_game')
 def handle_start(data):
@@ -522,7 +617,7 @@ def handle_next():
             if game['current'] < len(game['questions']):
                 q = game['questions'][game['current']]
                 emit('question_start', {
-                    'index': game['current'],
+                    'question_index': game['current'],
                     'question': q,
                     'time_left': game['time']
                 }, room=code)
@@ -549,7 +644,11 @@ def handle_answer(data):
             points = q.get('points', 1) if is_correct else 0
             game['players'][uid]['answers'][qidx] = {'correct': is_correct, 'points': points}
             game['players'][uid]['score'] += points
-            emit('answer_result', {'correct': is_correct, 'points': points, 'total': game['players'][uid]['score']}, room=request.sid)
+            emit('player_question_result', {
+                'is_correct': is_correct,
+                'points_earned': points,
+                'total_score': game['players'][uid]['score']
+            }, room=request.sid)
 
 def show_results(code):
     if code in active_games:
@@ -557,13 +656,17 @@ def show_results(code):
         current = game['current']
         total = len(game['players'])
         correct = sum(1 for p in game['players'].values() if p['answers'].get(current, {}).get('correct', False))
-        emit('question_results', {'total': total, 'correct': correct, 'percent': round(correct/total*100, 1) if total > 0 else 0}, room=code)
+        emit('question_results', {
+            'total_players': total,
+            'correct_count': correct,
+            'percentage': round(correct/total*100, 1) if total > 0 else 0
+        }, room=code)
         threading.Timer(3, lambda: socketio.emit('next_question', room=code)).start()
 
 def end_game(code):
     if code in active_games:
         game = active_games[code]
-        results = [{'name': p['name'], 'score': p['score']} for p in game['players'].values()]
+        results = [{'username': p['name'], 'score': p['score']} for p in game['players'].values()]
         results.sort(key=lambda x: x['score'], reverse=True)
         emit('game_ended', {'results': results}, room=code)
         del active_games[code]
@@ -573,6 +676,10 @@ def end_game(code):
 if __name__ == '__main__':
     init_db()
     port = int(os.getenv('PORT', 3000))
-    print(f"🚀 Server on http://localhost:{port}")
-    print("👨‍💼 admin/admin123 | 👨‍🏫 teacher/teacher123 | 👨‍🎓 student/student123")
+    print("=" * 50)
+    print(f"🚀 Server: http://localhost:{port}")
+    print("👨‍💼 Admin: admin / admin123")
+    print("👨‍🏫 Teacher: teacher / teacher123")
+    print("👨‍🎓 Student: student / student123")
+    print("=" * 50)
     socketio.run(app, host='0.0.0.0', port=port, debug=False)
