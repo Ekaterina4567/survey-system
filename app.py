@@ -600,7 +600,6 @@ def get_my_tests():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get_all_tests', methods=['GET'])
-@login_required
 def get_all_tests():
     try:
         conn = get_db()
@@ -612,6 +611,7 @@ def get_all_tests():
             FROM tests t
             LEFT JOIN users u ON t.created_by_user_id = u.id
             ORDER BY t.created_at DESC
+            LIMIT 10
         ''')
         
         tests = cur.fetchall()
