@@ -717,6 +717,77 @@ def update_test(test_id):
         print(f"Error updating test: {e}")
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/get_test_results/<int:test_id>', methods=['GET'])
+@login_required
+def get_test_results(test_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Проверяем, что пользователь - создатель теста
+        cur.execute('''
+            SELECT created_by_user_id FROM tests WHERE id = %s
+        ''', (test_id,))
+        test = cur.fetchone()
+        
+        if not test:
+            return jsonify({'error': 'Тест не найден'}), 404
+            
+        if test['created_by_user_id'] != session['user_id'] and session.get('role') != 'admin':
+            return jsonify({'error': 'Нет прав для просмотра результатов'}), 403
+        
+        # Получаем результаты с ФИО студентов
+        cur.execute('''
+            SELECT 
+                tr.id,
+                tr.score,
+                tr.max_score,
+                tr.completed_at,
+                u.full_name,
+                u.username,
+                u.email,
+                ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage
+            FROM test_results tr
+            JOIN users u ON tr.user_id = u.id
+            WHERE tr.test_id = %s
+            ORDER BY tr.completed_at DESC
+        ''', (test_id,))
+        
+        results = cur.fetchall()
+        
+        # Статистика по тесту
+        cur.execute('''
+            SELECT 
+                COUNT(*) as total_attempts,
+                AVG(score * 100.0 / NULLIF(max_score, 0)) as avg_score,
+                MAX(score) as max_score
+            FROM test_results
+            WHERE test_id = %s
+        ''', (test_id,))
+        stats = cur.fetchone()
+        
+        # Информация о тесте
+        cur.execute('SELECT title FROM tests WHERE id = %s', (test_id,))
+        test_info = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'test': {'title': test_info['title']},
+            'results': [dict(r) for r in results],
+            'stats': {
+                'total_attempts': stats['total_attempts'] or 0,
+                'avg_score': round(stats['avg_score'] or 0, 1),
+                'max_score': stats['max_score'] or 0
+            }
+        })
+        
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
 @app.route('/api/my_results', methods=['GET'])
 @login_required
 def my_results():
