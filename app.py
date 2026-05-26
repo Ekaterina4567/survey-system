@@ -16,13 +16,9 @@ import time
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
-# Используем простой сокет без eventlet проблем
 socketio = SocketIO(app, cors_allowed_origins="*")
 
-# Хранилище активных игр
 active_games = {}
-
-# База данных
 DATABASE = 'survey.db'
 
 def get_db():
@@ -34,7 +30,6 @@ def init_db():
     conn = get_db()
     cur = conn.cursor()
     
-    # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +44,6 @@ def init_db():
         )
     ''')
     
-    # Таблица тестов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tests (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +57,6 @@ def init_db():
         )
     ''')
     
-    # Таблица вопросов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_questions (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +70,6 @@ def init_db():
         )
     ''')
     
-    # Таблица результатов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_results (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -91,7 +83,6 @@ def init_db():
         )
     ''')
     
-    # Таблица детальных ответов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_answers_detail (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -104,7 +95,7 @@ def init_db():
         )
     ''')
     
-    # Создаём тестовых пользователей (только если их нет)
+    # Тестовые пользователи
     admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
     cur.execute("SELECT id FROM users WHERE username = 'admin'")
     if not cur.fetchone():
@@ -125,7 +116,7 @@ def init_db():
     
     conn.commit()
     conn.close()
-    print("✅ База данных готова")
+    print("✅ Database ready")
 
 def login_required(f):
     @wraps(f)
@@ -157,7 +148,6 @@ def normalize_text(text):
 def check_answer(question_type, user_answer, correct_answer):
     if not user_answer or not correct_answer:
         return False
-    
     if question_type == 'text':
         return normalize_text(str(user_answer)) == normalize_text(str(correct_answer))
     elif question_type == 'choice':
@@ -331,7 +321,6 @@ def create_test():
         
         conn.commit()
         
-        # Генерация QR кодов
         qr_data = f"{request.host_url}take_test?code={code}"
         qr_img = qrcode.make(qr_data)
         buffered = io.BytesIO()
@@ -473,6 +462,19 @@ def my_results():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/get_my_tests', methods=['GET'])
+@login_required
+def get_my_tests():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, title, unique_code, created_at, game_mode FROM tests WHERE created_by_user_id = ? ORDER BY created_at DESC", (session['user_id'],))
+        tests = [dict(row) for row in cur.fetchall()]
+        conn.close()
+        return jsonify(tests)
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 # ==================== WEBSOCKET ====================
 
 @socketio.on('join_game_host')
@@ -482,6 +484,7 @@ def handle_join_host(data):
         join_room(code)
         if code not in active_games:
             active_games[code] = {'players': {}, 'current': -1, 'active': False, 'questions': [], 'time': 10}
+        active_games[code]['host_sid'] = request.sid
         emit('host_connected', room=request.sid)
 
 @socketio.on('join_game_player')
@@ -493,7 +496,9 @@ def handle_join_player(data):
         join_room(code)
         if uid not in active_games[code]['players']:
             active_games[code]['players'][uid] = {'name': name, 'answers': {}, 'score': 0}
-        emit('player_joined', {'players': list(active_games[code]['players'].values())}, room=code)
+        active_games[code]['players'][uid]['sid'] = request.sid
+        players_list = [{'name': p['name']} for p in active_games[code]['players'].values()]
+        emit('players_update', {'players': players_list}, room=code)
 
 @socketio.on('start_game')
 def handle_start(data):
@@ -505,7 +510,9 @@ def handle_start(data):
         game['active'] = True
         game['current'] = -1
         emit('game_started', {'total': len(game['questions'])}, room=code)
-        threading.Timer(2, lambda: socketio.emit('next_question', room=code)).start()
+        def start_first():
+            socketio.emit('next_question', room=code)
+        threading.Timer(2, start_first).start()
 
 @socketio.on('next_question')
 def handle_next():
@@ -517,9 +524,12 @@ def handle_next():
                 emit('question_start', {
                     'index': game['current'],
                     'question': q,
-                    'time': game['time']
+                    'time_left': game['time']
                 }, room=code)
-                threading.Timer(game['time'], lambda: socketio.emit('time_up', room=code)).start()
+                def end_q():
+                    socketio.emit('time_up', room=code)
+                    threading.Timer(2, lambda: show_results(code)).start()
+                threading.Timer(game['time'], end_q).start()
             else:
                 end_game(code)
             break
@@ -533,21 +543,29 @@ def handle_answer(data):
     
     if code in active_games and uid in active_games[code]['players']:
         game = active_games[code]
-        q = game['questions'][qidx]
-        is_correct = check_answer(q.get('type'), answer, q.get('correct_answer'))
-        points = q.get('points', 1) if is_correct else 0
-        
-        game['players'][uid]['answers'][qidx] = {'correct': is_correct, 'points': points}
-        game['players'][uid]['score'] += points
-        
-        emit('answer_result', {'correct': is_correct, 'points': points, 'total': game['players'][uid]['score']}, room=request.sid)
+        if qidx < len(game['questions']):
+            q = game['questions'][qidx]
+            is_correct = check_answer(q.get('type'), answer, q.get('correct_answer'))
+            points = q.get('points', 1) if is_correct else 0
+            game['players'][uid]['answers'][qidx] = {'correct': is_correct, 'points': points}
+            game['players'][uid]['score'] += points
+            emit('answer_result', {'correct': is_correct, 'points': points, 'total': game['players'][uid]['score']}, room=request.sid)
+
+def show_results(code):
+    if code in active_games:
+        game = active_games[code]
+        current = game['current']
+        total = len(game['players'])
+        correct = sum(1 for p in game['players'].values() if p['answers'].get(current, {}).get('correct', False))
+        emit('question_results', {'total': total, 'correct': correct, 'percent': round(correct/total*100, 1) if total > 0 else 0}, room=code)
+        threading.Timer(3, lambda: socketio.emit('next_question', room=code)).start()
 
 def end_game(code):
     if code in active_games:
         game = active_games[code]
         results = [{'name': p['name'], 'score': p['score']} for p in game['players'].values()]
         results.sort(key=lambda x: x['score'], reverse=True)
-        emit('game_end', {'results': results}, room=code)
+        emit('game_ended', {'results': results}, room=code)
         del active_games[code]
 
 # ==================== ЗАПУСК ====================
