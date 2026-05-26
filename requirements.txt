@@ -1,6 +1,7 @@
 Flask==2.3.3
-psycopg2-binary>=2.9.10
-python-dotenv==1.0.0
+flask-socketio==5.3.6
+python-socketio==5.10.0
+eventlet==0.33.3
 qrcode==7.4.2
-Pillow>=10.4.0
+Pillow==10.4.0
 gunicorn==21.2.0
