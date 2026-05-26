@@ -2,13 +2,11 @@ services:
   - type: web
     name: survey-system
     runtime: python
-    repo: https://github.com/Ekaterina4567/survey-system
     plan: free
-    region: frankfurt
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --worker-class eventlet --workers 1
+    startCommand: gunicorn app:app --worker-class eventlet --workers 1 --timeout 120
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: PYTHON_VERSION
-        value: 3.11.0
+        value: 3.11.9
