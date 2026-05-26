@@ -6,10 +6,75 @@
     <title>SurveySystem - Платформа тестирования</title>
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        /* Дополнительные стили для логотипа */
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        
+        .logo-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            font-weight: 700;
+            color: white;
+            box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
+            transition: transform 0.2s ease;
+        }
+        
+        .logo-icon:hover {
+            transform: scale(1.05);
+        }
+        
+        .logo-text {
+            font-size: 1.4rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+        
+        .nav-brand {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        
+        /* Декоративный элемент для лого в hero секции */
+        .logo-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            background: rgba(99, 102, 241, 0.1);
+            padding: 6px 16px;
+            border-radius: 40px;
+            margin-bottom: 1rem;
+            font-size: 0.85rem;
+            color: #6366f1;
+            font-weight: 500;
+        }
+        
+        .logo-badge span {
+            font-size: 1.1rem;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">📋 SurveySystem</div>
+        <div class="logo-container">
+            <div class="logo-icon">📋</div>
+            <div class="logo-text">SurveySystem</div>
+        </div>
         <div class="nav-links" id="nav-links">
             <a href="/" class="active">Главная</a>
             <a href="/login_page">Вход</a>
@@ -19,6 +84,9 @@
 
     <div class="hero-section">
         <div class="hero-content">
+            <div class="logo-badge">
+                <span>✨</span> Добро пожаловать в SurveySystem
+            </div>
             <h1>Система <span class="highlight">онлайн тестирования</span></h1>
             <p>Создавайте тесты, проходите их и получайте результаты. Вся статистика сохраняется в вашем личном кабинете.</p>
             <div class="hero-buttons">
@@ -27,9 +95,11 @@
             </div>
         </div>
         <div class="hero-illustration">
-            <div class="illustration-box">📋</div>
-            <div style="font-weight: 600; color: #3D2B1F; margin-top: 1rem;">Тест-система</div>
-            <div style="font-size: 0.8rem; color: #7A6B5D;">Сохраняйте результаты</div>
+            <div class="illustration-box">
+                <div style="font-size: 3rem;">📋</div>
+                <div style="font-weight: 600; color: #3D2B1F; margin-top: 0.5rem;">Тест-система</div>
+                <div style="font-size: 0.8rem; color: #7A6B5D;">Сохраняйте результаты</div>
+            </div>
         </div>
     </div>
 
