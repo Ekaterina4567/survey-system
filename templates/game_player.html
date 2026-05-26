@@ -15,28 +15,13 @@
             text-align: center;
             padding: 3rem;
             background: white;
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border-light);
-        }
-        .waiting-spinner {
-            font-size: 3rem;
-            animation: pulse 1s infinite;
-        }
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
-        }
-        .question-screen {
-            background: white;
-            border-radius: var(--radius-lg);
-            padding: 2rem;
-            border: 1px solid var(--border-light);
+            border-radius: 20px;
         }
         .timer-circle {
             width: 80px;
             height: 80px;
             border-radius: 50%;
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
             display: flex;
             align-items: center;
             justify-content: center;
@@ -45,35 +30,25 @@
             font-weight: 800;
             color: white;
         }
-        .timer-warning {
-            animation: warning 0.5s infinite;
-        }
-        @keyframes warning {
-            0%, 100% { transform: scale(1); background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); }
-            50% { transform: scale(1.05); background: linear-gradient(135deg, #ff6b6b 0%, #ff4757 100%); }
-        }
         .option-btn {
             display: block;
             width: 100%;
             padding: 1rem;
             margin-bottom: 0.75rem;
-            background: var(--primary-soft);
-            border: 1px solid var(--border-light);
-            border-radius: var(--radius-md);
+            background: #F5EDE3;
+            border: 1px solid #EDE3D8;
+            border-radius: 10px;
             cursor: pointer;
             text-align: left;
             transition: all 0.2s;
-            font-family: inherit;
-            font-size: 1rem;
         }
         .option-btn:hover:not(:disabled) {
-            background: var(--primary-light);
+            background: #E8D5B7;
             transform: translateX(5px);
         }
         .option-btn.selected {
-            background: var(--primary);
+            background: #8B5E3C;
             color: white;
-            border-color: var(--primary);
         }
         .option-btn:disabled {
             opacity: 0.6;
@@ -93,55 +68,21 @@
         }
         .result-card {
             background: white;
-            border-radius: var(--radius-lg);
+            border-radius: 20px;
             padding: 2rem;
             text-align: center;
-            max-width: 400px;
-            animation: bounce 0.5s ease;
         }
-        @keyframes bounce {
-            0%, 100% { transform: scale(0.8); opacity: 0; }
-            50% { transform: scale(1.1); }
-            100% { transform: scale(1); opacity: 1; }
-        }
-        .result-correct {
-            color: var(--success);
-            font-size: 4rem;
-        }
-        .result-wrong {
-            color: var(--error);
-            font-size: 4rem;
-        }
+        .result-correct { color: #2E7D32; font-size: 4rem; }
+        .result-wrong { color: #C62828; font-size: 4rem; }
         .score-board {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
             color: white;
             padding: 1rem;
-            border-radius: var(--radius-md);
+            border-radius: 10px;
             text-align: center;
             margin-bottom: 1rem;
         }
-        .score-board span {
-            font-size: 1.5rem;
-            font-weight: 800;
-        }
-        .text-answer-input {
-            width: 100%;
-            padding: 1rem;
-            border: 1px solid var(--border-light);
-            border-radius: var(--radius-md);
-            font-size: 1rem;
-            font-family: inherit;
-            margin-bottom: 1rem;
-        }
-        .text-answer-input:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-        .submit-answer-btn {
-            width: 100%;
-            padding: 1rem;
-            font-size: 1.1rem;
-        }
+        .score-board span { font-size: 1.5rem; font-weight: 800; }
     </style>
 </head>
 <body>
@@ -149,31 +90,30 @@
         <div class="nav-brand">🎮 SurveySystem Game</div>
         <div class="nav-links">
             <a href="/">Главная</a>
+            <a href="/student_dashboard">Мои результаты</a>
             <a href="#" onclick="logout()">Выход</a>
         </div>
     </nav>
 
-    <div class="game-container" id="main-container">
+    <div class="game-container">
         <div id="waiting-screen" class="waiting-screen">
-            <div class="waiting-spinner">🎮</div>
+            <div style="font-size: 3rem;">🎮</div>
             <h2>Ожидание начала игры...</h2>
             <p>Код игры: <strong id="game-code"></strong></p>
-            <div id="players-count">Подключенных игроков: <span id="player-count">1</span></div>
+            <div id="players-count">Игроков: <span id="player-count">1</span></div>
             <div class="score-board" style="margin-top: 1rem;">
                 Ваши очки: <span id="total-score">0</span>
             </div>
         </div>
 
         <div id="question-screen" style="display: none;">
-            <div class="question-screen">
-                <div class="score-board">
-                    Ваши очки: <span id="game-score">0</span>
-                </div>
-                <div class="timer-circle" id="timer">0</div>
-                <div id="question-text" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 1.5rem; text-align: center;"></div>
-                <div id="options-container"></div>
-                <button id="submit-text-btn" class="btn btn-primary submit-answer-btn" onclick="submitTextAnswer()" style="display: none;">✅ Ответить</button>
+            <div class="score-board">
+                Ваши очки: <span id="game-score">0</span>
             </div>
+            <div class="timer-circle" id="timer">0</div>
+            <div id="question-text" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 1.5rem; text-align: center;"></div>
+            <div id="options-container"></div>
+            <button id="submit-text-btn" class="btn btn-primary" onclick="submitTextAnswer()" style="display: none; width: 100%;">✅ Ответить</button>
         </div>
     </div>
 
@@ -184,12 +124,9 @@
         let currentQuestionIndex = -1;
         let selectedAnswer = null;
         let currentScore = 0;
-        let timeLeft = 0;
-        let timerInterval = null;
 
         document.getElementById('game-code').innerText = code;
 
-        // Получаем информацию о пользователе
         let userId = null;
         let username = null;
 
@@ -198,74 +135,50 @@
                 const response = await fetch('/check_auth');
                 const data = await response.json();
                 if (data.authenticated) {
-                    const userResp = await fetch('/api/my_results');
-                    userId = data.username;
                     username = data.username;
-                    document.getElementById('player-count').innerText = '...';
+                    userId = data.username;
                 } else {
                     window.location.href = '/login_page';
                 }
             } catch (error) {
-                console.error('Error getting user info:', error);
+                console.error('Error:', error);
             }
         }
 
-        // Подключение WebSocket
-        function connectSocket() {
-            socket = io();
+        socket = io();
 
-            socket.on('connect', () => {
-                console.log('Connected to server');
-                socket.emit('join_game_player', {
-                    game_code: code,
-                    user_id: userId,
-                    username: username
-                });
+        socket.on('connect', () => {
+            socket.emit('join_game_player', {
+                game_code: code,
+                user_id: userId,
+                username: username
             });
+        });
 
-            socket.on('players_update', (data) => {
-                document.getElementById('player-count').innerText = data.players.length;
-            });
+        socket.on('players_update', (data) => {
+            document.getElementById('player-count').innerText = data.players.length;
+        });
 
-            socket.on('game_started', (data) => {
-                document.getElementById('waiting-screen').style.display = 'none';
-                document.getElementById('question-screen').style.display = 'block';
-                showToast('🎮 Игра началась! Удачи!');
-            });
+        socket.on('game_started', () => {
+            document.getElementById('waiting-screen').style.display = 'none';
+            document.getElementById('question-screen').style.display = 'block';
+        });
 
-            socket.on('question_start', (data) => {
-                currentQuestionIndex = data.question_index;
-                currentQuestion = data.question;
-                displayQuestion(data.question, data.time_left);
-                startTimer(data.time_left);
-            });
+        socket.on('question_start', (data) => {
+            currentQuestionIndex = data.question_index;
+            currentQuestion = data.question;
+            displayQuestion(data.question);
+            startTimer(data.time_left);
+        });
 
-            socket.on('time_up', () => {
-                showToast('⏰ Время вышло!');
-                disableAnswerButtons();
-            });
+        socket.on('player_question_result', (data) => {
+            currentScore = data.total_score;
+            document.getElementById('game-score').innerText = currentScore;
+            document.getElementById('total-score').innerText = currentScore;
+            showQuestionResult(data.is_correct, data.points_earned);
+        });
 
-            socket.on('player_question_result', (data) => {
-                currentScore = data.total_score;
-                document.getElementById('game-score').innerText = currentScore;
-                document.getElementById('total-score').innerText = currentScore;
-                showQuestionResult(data.is_correct, data.points_earned);
-            });
-
-            socket.on('question_results', (data) => {
-                // Ждем следующий вопрос
-            });
-
-            socket.on('game_ended', (data) => {
-                showFinalResults(data);
-            });
-
-            socket.on('answer_timeout', () => {
-                showToast('❌ Вы не успели ответить вовремя!');
-            });
-        }
-
-        function displayQuestion(question, timeLeft) {
+        function displayQuestion(question) {
             document.getElementById('question-text').innerHTML = question.text;
             selectedAnswer = null;
             
@@ -286,19 +199,14 @@
                     </label>
                 `).join('');
                 document.getElementById('submit-text-btn').style.display = 'block';
-                document.getElementById('submit-text-btn').innerHTML = '✅ Ответить';
             } else {
-                container.innerHTML = `
-                    <textarea id="text-answer" class="text-answer-input" rows="3" placeholder="Введите ваш ответ..."></textarea>
-                `;
+                container.innerHTML = `<textarea id="text-answer" class="text-answer" rows="3" placeholder="Введите ваш ответ..."></textarea>`;
                 document.getElementById('submit-text-btn').style.display = 'block';
-                document.getElementById('submit-text-btn').innerHTML = '✏️ Ответить';
             }
         }
 
         function selectAnswer(answer) {
             selectedAnswer = answer;
-            // Визуальное выделение
             document.querySelectorAll('.option-btn').forEach(btn => {
                 btn.classList.remove('selected');
                 if (btn.innerText === answer) {
@@ -306,7 +214,6 @@
                 }
             });
             
-            // Автоматическая отправка для choice
             if (currentQuestion.type === 'choice') {
                 submitAnswer(selectedAnswer);
             }
@@ -325,12 +232,12 @@
             }
             
             if (!selectedAnswer && currentQuestion.type !== 'text') {
-                showToast('Пожалуйста, выберите ответ');
+                alert('Пожалуйста, выберите ответ');
                 return;
             }
             
             if (currentQuestion.type === 'text' && !selectedAnswer.trim()) {
-                showToast('Пожалуйста, введите ответ');
+                alert('Пожалуйста, введите ответ');
                 return;
             }
             
@@ -338,10 +245,6 @@
         }
 
         function submitAnswer(answer) {
-            if (timerInterval) {
-                clearInterval(timerInterval);
-            }
-            
             socket.emit('submit_answer', {
                 game_code: code,
                 user_id: userId,
@@ -349,37 +252,23 @@
                 answer: answer
             });
             
-            disableAnswerButtons();
-        }
-
-        function disableAnswerButtons() {
-            document.querySelectorAll('.option-btn').forEach(btn => {
-                btn.disabled = true;
-            });
-            const textBtn = document.getElementById('submit-text-btn');
-            if (textBtn) textBtn.disabled = true;
-            const textarea = document.getElementById('text-answer');
-            if (textarea) textarea.disabled = true;
+            document.querySelectorAll('.option-btn').forEach(btn => btn.disabled = true);
+            document.getElementById('submit-text-btn').disabled = true;
         }
 
         function startTimer(seconds) {
-            timeLeft = seconds;
+            let timeLeft = seconds;
             const timerEl = document.getElementById('timer');
             timerEl.innerText = timeLeft;
             
-            if (timerInterval) clearInterval(timerInterval);
-            
-            timerInterval = setInterval(() => {
+            const interval = setInterval(() => {
                 timeLeft--;
                 timerEl.innerText = timeLeft;
-                
-                if (timeLeft <= 5) {
-                    timerEl.classList.add('timer-warning');
+                if (timeLeft <= 3) {
+                    timerEl.style.animation = 'pulse 0.5s infinite';
                 }
-                
                 if (timeLeft <= 0) {
-                    clearInterval(timerInterval);
-                    timerEl.classList.remove('timer-warning');
+                    clearInterval(interval);
                 }
             }, 1000);
         }
@@ -393,63 +282,12 @@
                         ${isCorrect ? '✓' : '✗'}
                     </div>
                     <h2>${isCorrect ? 'Правильно!' : 'Неправильно'}</h2>
-                    <p>${isCorrect ? `+${pointsEarned} очков!` : 'Правильный ответ будет показан в конце'}</p>
+                    <p>${isCorrect ? `+${pointsEarned} очков!` : ''}</p>
                     <button class="btn btn-primary" onclick="this.closest('.result-overlay').remove()">OK</button>
                 </div>
             `;
             document.body.appendChild(overlay);
-            
-            setTimeout(() => {
-                if (overlay.parentNode) overlay.remove();
-            }, 2000);
-        }
-
-        function showFinalResults(data) {
-            const container = document.getElementById('main-container');
-            const myResult = data.results.find(r => r.username === username);
-            const position = data.results.findIndex(r => r.username === username) + 1;
-            
-            container.innerHTML = `
-                <div class="waiting-screen">
-                    <div style="font-size: 4rem;">🏆</div>
-                    <h2>Игра завершена!</h2>
-                    <div class="score-board" style="margin: 1rem 0;">
-                        <div>Ваш результат</div>
-                        <span>${myResult ? myResult.score : 0} / ${myResult ? myResult.total_possible : 0}</span>
-                        <div>${myResult ? myResult.correct_answers : 0} правильных ответов</div>
-                        <div style="margin-top: 0.5rem;">🏅 Место: ${position} из ${data.results.length}</div>
-                    </div>
-                    <h3>🏆 Топ игроков:</h3>
-                    ${data.results.map((r, idx) => `
-                        <div class="final-result ${idx === 0 ? 'top' : ''}" style="margin-bottom: 0.5rem; display: flex; justify-content: space-between;">
-                            <span>${idx + 1}. ${escapeHtml(r.username)}</span>
-                            <span style="font-weight: 700;">${r.score} очков</span>
-                        </div>
-                    `).join('')}
-                    <div style="margin-top: 2rem; display: flex; gap: 1rem; justify-content: center;">
-                        <a href="/student_dashboard" class="btn btn-primary">📊 К результатам</a>
-                        <a href="/take_test" class="btn btn-secondary">🔄 Пройти другой тест</a>
-                    </div>
-                </div>
-            `;
-        }
-
-        function showToast(message) {
-            const toast = document.createElement('div');
-            toast.style.cssText = `
-                position: fixed;
-                bottom: 20px;
-                right: 20px;
-                background: var(--primary);
-                color: white;
-                padding: 0.75rem 1.5rem;
-                border-radius: 9999px;
-                z-index: 1000;
-                animation: fadeIn 0.3s ease;
-            `;
-            toast.innerText = message;
-            document.body.appendChild(toast);
-            setTimeout(() => toast.remove(), 3000);
+            setTimeout(() => overlay.remove(), 2000);
         }
 
         function escapeHtml(text) {
@@ -464,12 +302,7 @@
             window.location.href = '/';
         }
 
-        async function init() {
-            await getUserInfo();
-            connectSocket();
-        }
-
-        init();
+        getUserInfo();
     </script>
 </body>
 </html>
