@@ -68,29 +68,21 @@
 
     <script>
         async function loadStats() {
-    try {
-        // Проверяем авторизацию
-        const authResponse = await fetch('/check_auth');
-        const authData = await authResponse.json();
-        
-        // Если пользователь не авторизован - не загружаем статистику
-        if (!authData.authenticated) {
-            console.log('Пользователь не авторизован, статистика не загружена');
-            return;
-        }
-        
-        const response = await fetch('/api/get_all_tests');
-        if (response.ok) {
-            const tests = await response.json();
-            const statsDiv = document.getElementById('active-tests');
-            if (statsDiv) {
-                statsDiv.textContent = tests.length;
+            try {
+                const response = await fetch('/api/get_all_tests');
+                if (response.ok) {
+                    const tests = await response.json();
+                    const statsDiv = document.getElementById('active-tests');
+                    if (statsDiv) {
+                        statsDiv.textContent = tests.length;
+                    }
+                }
+            } catch (error) {
+                console.error('Error loading stats:', error);
             }
         }
-    } catch (error) {
-        console.error('Error loading stats:', error);
-    }
-}
+        
+        loadStats();
         
         // Проверяем авторизацию для отображения правильных кнопок
         fetch('/check_auth')
