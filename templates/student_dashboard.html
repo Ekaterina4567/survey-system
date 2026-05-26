@@ -1,4 +1,3 @@
-<!-- Упрощённая версия student_dashboard.html -->
 <!DOCTYPE html>
 <html lang="ru">
 <head>
@@ -160,10 +159,6 @@
                     `;
                     
                     data.results.forEach(r => {
-                        let scoreClass = 'low';
-                        if (r.percentage >= 80) scoreClass = 'high';
-                        else if (r.percentage >= 60) scoreClass = 'medium';
-                        
                         html += `
                             <div class="result-item" onclick="viewResultDetail(${r.id})">
                                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -171,7 +166,7 @@
                                         <strong>${escapeHtml(r.title)}</strong>
                                         <div style="font-size: 0.75rem; color: var(--text-muted);">Код: ${r.unique_code}</div>
                                     </div>
-                                    <div class="result-score ${scoreClass}" style="font-size: 1.2rem; font-weight: 700;">
+                                    <div style="font-size: 1.2rem; font-weight: 700;">
                                         ${r.score} / ${r.max_score} (${r.percentage}%)
                                     </div>
                                 </div>
@@ -200,6 +195,15 @@
         async function loadMyTests() {
             try {
                 const response = await fetch('/api/get_my_tests');
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login_page';
+                        return;
+                    }
+                    throw new Error('Ошибка загрузки');
+                }
+                
                 const tests = await response.json();
                 
                 if (tests.length > 0) {
@@ -241,22 +245,28 @@
             }
         }
 
-        // Функция для показа/скрытия результатов теста
         async function toggleResults(testId, testTitle) {
             const resultsDiv = document.getElementById(`results-${testId}`);
             
-            // Если уже открыто - закрываем
             if (resultsDiv.style.display === 'block') {
                 resultsDiv.style.display = 'none';
                 return;
             }
             
-            // Показываем загрузку
             resultsDiv.style.display = 'block';
             resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem;">📊 Загрузка результатов...</div>';
             
             try {
                 const response = await fetch(`/api/get_test_results/${testId}`);
+                
+                if (!response.ok) {
+                    if (response.status === 401) {
+                        window.location.href = '/login_page';
+                        return;
+                    }
+                    throw new Error('Ошибка загрузки');
+                }
+                
                 const data = await response.json();
                 
                 if (!data.success) {
@@ -269,7 +279,6 @@
                     return;
                 }
                 
-                // Статистика
                 let statsHtml = `
                     <div class="results-stats">
                         <div class="stat-mini">
@@ -360,8 +369,27 @@
             await fetch('/logout');
             window.location.href = '/';
         }
-
-        loadResults();
+        
+        // Проверка авторизации при загрузке
+        async function checkAuthAndLoad() {
+            try {
+                const response = await fetch('/check_auth');
+                const data = await response.json();
+                
+                if (!data.authenticated) {
+                    window.location.href = '/login_page';
+                    return;
+                }
+                
+                loadResults();
+            } catch (error) {
+                console.error('Auth check error:', error);
+                window.location.href = '/login_page';
+            }
+        }
+        
+        // Запускаем проверку авторизации
+        checkAuthAndLoad();
     </script>
 </body>
 </html>
