@@ -402,6 +402,67 @@ def get_test_by_code():
         cur = conn.cursor()
         
         cur.execute('''
+            SELECT id, title, unique_code, created_by_user_id, game_mode, time_per_question
+            FROM tests WHERE unique_code = ?
+        ''', (code.upper(),))
+        
+        test = cur.fetchone()
+        
+        if not test:
+            conn.close()
+            return jsonify({'error': 'Тест не найден'}), 404
+        
+        cur.execute('''
+            SELECT id, question_text, question_type, options, correct_answer, points, order_index
+            FROM test_questions WHERE test_id = ? ORDER BY order_index
+        ''', (test['id'],))
+        
+        questions = cur.fetchall()
+        
+        result_questions = []
+        for q in questions:
+            q_dict = dict(q)
+            if q_dict['options']:
+                try:
+                    q_dict['options'] = json.loads(q_dict['options'])
+                except:
+                    q_dict['options'] = []
+            else:
+                q_dict['options'] = []
+            result_questions.append(q_dict)
+        
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'test': {
+                'id': test['id'],
+                'title': test['title'],
+                'code': test['unique_code'],
+                'created_by_user_id': test['created_by_user_id'],
+                'game_mode': test['game_mode'],
+                'time_per_question': test['time_per_question'],
+                'questions': result_questions
+            }
+        })
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_test_by_code', methods=['POST'])
+def get_test_by_code():
+    try:
+        data = request.json
+        code = data.get('code')
+        
+        if not code:
+            return jsonify({'error': 'Введите код теста'}), 400
+        
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
             SELECT id, title, unique_code, created_by_user_id
             FROM tests WHERE unique_code = %s
         ''', (code.upper(),))
