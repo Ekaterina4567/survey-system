@@ -1,54 +1,51 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from flask_socketio import SocketIO, emit, join_room, leave_room
-import sqlite3
 import os
 import json
 import secrets
+import hashlib
 import qrcode
 import io
 import base64
 from datetime import datetime
 from functools import wraps
-import hashlib
-import threading
-import time
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2.pool import SimpleConnectionPool
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+# PostgreSQL connection pool
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://survey_user:Fd25hZNEWtBryhp1j7b43xVVdgp7hz95@dpg-d8a7p66gvqtc73ck7c30-a.oregon-postgres.render.com/survey_db_ks4f')
 
-# Хранилище активных игр
-active_games = {}
-
-# Настройка базы данных для Render (временная директория)
-DB_DIR = '/tmp/data'
-if not os.path.exists(DB_DIR):
-    os.makedirs(DB_DIR)
-DATABASE = os.path.join(DB_DIR, 'survey.db')
+# Добавляем sslmode=require если нужно
+if '?' not in DATABASE_URL:
+    DATABASE_URL += '?sslmode=require'
 
 def get_db():
-    """Получение соединения с SQLite"""
-    conn = sqlite3.connect(DATABASE)
-    conn.row_factory = sqlite3.Row
+    """Получение соединения с PostgreSQL"""
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
 def init_db():
-    """Инициализация базы данных"""
+    """Инициализация базы данных PostgreSQL"""
     conn = get_db()
     cur = conn.cursor()
     
     # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
             plain_password TEXT,
             role TEXT DEFAULT 'student',
             full_name TEXT,
-            is_active INTEGER DEFAULT 1,
+            is_active BOOLEAN DEFAULT TRUE,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
@@ -56,22 +53,20 @@ def init_db():
     # Таблица тестов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
             unique_code TEXT UNIQUE NOT NULL,
-            created_by_user_id INTEGER,
+            created_by_user_id INTEGER REFERENCES users(id),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            is_editable INTEGER DEFAULT 1,
-            game_mode INTEGER DEFAULT 0,
-            time_per_question INTEGER DEFAULT 10
+            is_editable BOOLEAN DEFAULT TRUE
         )
     ''')
     
     # Таблица вопросов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            test_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
             question_text TEXT NOT NULL,
             question_type TEXT DEFAULT 'choice',
             options TEXT,
@@ -84,68 +79,74 @@ def init_db():
     # Таблица результатов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            test_id INTEGER NOT NULL,
-            user_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
             score INTEGER DEFAULT 0,
             max_score INTEGER DEFAULT 0,
             completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            answers_json TEXT,
-            game_session_id TEXT
+            answers_json TEXT
         )
     ''')
     
     # Таблица детальных ответов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_answers_detail (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            result_id INTEGER NOT NULL,
-            question_id INTEGER NOT NULL,
+            id SERIAL PRIMARY KEY,
+            result_id INTEGER NOT NULL REFERENCES test_results(id) ON DELETE CASCADE,
+            question_id INTEGER NOT NULL REFERENCES test_questions(id) ON DELETE CASCADE,
             user_answer TEXT,
-            is_correct INTEGER DEFAULT 0,
+            is_correct BOOLEAN DEFAULT FALSE,
             points_earned INTEGER DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')
     
-    # Создаём тестовых пользователей
+    # Создаём тестового админа (пароль: admin123)
     admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-    cur.execute("SELECT id FROM users WHERE username = 'admin'")
-    if not cur.fetchone():
-        cur.execute("INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
-                   ('admin', 'admin@survey.com', admin_hash, 'admin123', 'admin', 'Администратор'))
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'admin', 'admin@survey.com', %s, 'admin123', 'admin', 'Администратор', TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
+    ''', (admin_hash,))
     
+    # Создаём тестового преподавателя
     teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
-    cur.execute("SELECT id FROM users WHERE username = 'teacher'")
-    if not cur.fetchone():
-        cur.execute("INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
-                   ('teacher', 'teacher@survey.com', teacher_hash, 'teacher123', 'teacher', 'Преподаватель'))
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'teacher', 'teacher@survey.com', %s, 'teacher123', 'teacher', 'Преподаватель', TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
+    ''', (teacher_hash,))
     
+    # Создаём тестового студента
     student_hash = hashlib.sha256("student123".encode()).hexdigest()
-    cur.execute("SELECT id FROM users WHERE username = 'student'")
-    if not cur.fetchone():
-        cur.execute("INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active) VALUES (?, ?, ?, ?, ?, ?, 1)",
-                   ('student', 'student@survey.com', student_hash, 'student123', 'student', 'Студент'))
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'student', 'student@survey.com', %s, 'student123', 'student', 'Студент', TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'student')
+    ''', (student_hash,))
     
     conn.commit()
+    cur.close()
     conn.close()
-    print("✅ База данных инициализирована в:", DATABASE)
+    print("✅ PostgreSQL база данных инициализирована!")
 
 def login_required(f):
     @wraps(f)
-    def decorated(*args, **kwargs):
+    def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
             return jsonify({'error': 'Требуется авторизация'}), 401
         return f(*args, **kwargs)
-    return decorated
+    return decorated_function
 
 def generate_unique_code():
     while True:
         code = secrets.token_urlsafe(6).upper().replace('-', 'X').replace('_', 'Y')
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id FROM tests WHERE unique_code = ?", (code,))
+        cur.execute("SELECT id FROM tests WHERE unique_code = %s", (code,))
         result = cur.fetchone()
+        cur.close()
         conn.close()
         if not result:
             return code
@@ -161,17 +162,23 @@ def normalize_text(text):
 def check_answer(question_type, user_answer, correct_answer):
     if not user_answer or not correct_answer:
         return False
+    
     if question_type == 'text':
-        return normalize_text(str(user_answer)) == normalize_text(str(correct_answer))
+        user_norm = normalize_text(str(user_answer))
+        correct_norm = normalize_text(str(correct_answer))
+        return user_norm == correct_norm
     elif question_type == 'choice':
-        return normalize_text(str(user_answer)) == normalize_text(str(correct_answer))
+        user_norm = normalize_text(str(user_answer))
+        correct_norm = normalize_text(str(correct_answer))
+        return user_norm == correct_norm
     elif question_type == 'checkbox':
         user_set = set(normalize_text(x) for x in str(user_answer).split(','))
         correct_set = set(normalize_text(x) for x in str(correct_answer).split(','))
         return user_set == correct_set
+    
     return False
 
-# ==================== СТРАНИЦЫ ====================
+# ===== МАРШРУТЫ =====
 
 @app.route('/')
 def index():
@@ -197,17 +204,11 @@ def create_test_page():
         return redirect(url_for('login_page'))
     return render_template('create_test.html', user=session)
 
-@app.route('/game_host/<code>')
-def game_host(code):
+@app.route('/edit_test_page/<int:test_id>')
+def edit_test_page(test_id):
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
-    return render_template('game_host.html', code=code, user=session)
-
-@app.route('/game_player/<code>')
-def game_player(code):
-    if 'user_id' not in session:
-        return redirect(url_for('login_page'))
-    return render_template('game_player.html', code=code, user=session)
+    return render_template('edit_test.html', test_id=test_id, user=session)
 
 @app.route('/take_test')
 def take_test():
@@ -221,7 +222,24 @@ def result_detail(result_id):
         return redirect(url_for('login_page'))
     return render_template('result_detail.html', result_id=result_id, user=session)
 
-# ==================== API МАРШРУТЫ ====================
+@app.route('/admin')
+def admin():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+    return redirect(url_for('create_test_page'))
+
+@app.route('/teacher_dashboard')
+def teacher_dashboard():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+    return redirect(url_for('student_dashboard'))
+
+@app.route('/qr_redirect')
+def qr_redirect():
+    """Страница для редиректа через QR-код"""
+    return render_template('qr_redirect.html')
+
+# ===== API =====
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -234,26 +252,32 @@ def register():
         role = data.get('role', 'student')
         
         if not all([username, email, password]):
-            return jsonify({'error': 'Заполните все поля'}), 400
+            return jsonify({'error': 'Заполните все обязательные поля!'}), 400
         
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
+        
+        cur.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
         if cur.fetchone():
+            cur.close()
             conn.close()
-            return jsonify({'error': 'Пользователь уже существует'}), 400
+            return jsonify({'error': 'Пользователь уже существует!'}), 400
         
         password_hash = hash_password(password)
-        cur.execute('''INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
-                       VALUES (?, ?, ?, ?, ?, 1, ?)''', 
-                   (username, email, password_hash, role, full_name, password))
-        user_id = cur.lastrowid
+        cur.execute('''
+            INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
+            VALUES (%s, %s, %s, %s, %s, TRUE, %s) RETURNING id
+        ''', (username, email, password_hash, role, full_name, password))
+        
+        user_id = cur.fetchone()['id']
         conn.commit()
+        cur.close()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Регистрация успешна', 'user_id': user_id})
+        return jsonify({'success': True, 'message': 'Регистрация успешна!', 'user_id': user_id})
+    
     except Exception as e:
-        print(f"Register error: {e}")
+        print(f"Register Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/login', methods=['POST'])
@@ -263,20 +287,21 @@ def login():
         username = data.get('username')
         password = data.get('password')
         
-        if not username or not password:
-            return jsonify({'error': 'Введите логин и пароль'}), 400
-        
         conn = get_db()
         cur = conn.cursor()
-        password_hash = hash_password(password)
         
-        cur.execute("SELECT * FROM users WHERE (username = ? OR email = ?) AND password_hash = ? AND is_active = 1",
-                   (username, username, password_hash))
+        password_hash = hash_password(password)
+        cur.execute('''
+            SELECT * FROM users 
+            WHERE (username = %s OR email = %s) AND password_hash = %s AND is_active = TRUE
+        ''', (username, username, password_hash))
+        
         user = cur.fetchone()
+        cur.close()
         conn.close()
         
         if not user:
-            return jsonify({'error': 'Неверный логин или пароль'}), 401
+            return jsonify({'error': 'Неверные учетные данные!'}), 401
         
         session['user_id'] = user['id']
         session['username'] = user['username']
@@ -284,19 +309,20 @@ def login():
         session['full_name'] = user['full_name']
         
         return jsonify({
-            'success': True,
-            'message': 'Вход выполнен',
+            'success': True, 
+            'message': 'Вход выполнен!',
             'role': user['role'],
             'redirect': '/student_dashboard'
         })
+    
     except Exception as e:
-        print(f"Login error: {e}")
+        print(f"Login Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/logout')
 def logout():
     session.clear()
-    return jsonify({'success': True, 'message': 'Выход выполнен'})
+    return jsonify({'success': True, 'message': 'Выход выполнен!'})
 
 @app.route('/check_auth')
 def check_auth():
@@ -311,54 +337,56 @@ def create_test():
         data = request.json
         title = data.get('title')
         questions = data.get('questions', [])
-        game_mode = data.get('game_mode', 0)
-        time_per_question = data.get('time_per_question', 10)
         
         if not title or not questions:
-            return jsonify({'error': 'Название и вопросы обязательны'}), 400
+            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
         
         code = generate_unique_code()
         conn = get_db()
         cur = conn.cursor()
         
-        cur.execute('''INSERT INTO tests (title, unique_code, created_by_user_id, game_mode, time_per_question)
-                       VALUES (?, ?, ?, ?, ?)''',
-                   (title, code, session['user_id'], game_mode, time_per_question))
-        test_id = cur.lastrowid
+        cur.execute('''
+            INSERT INTO tests (title, unique_code, created_by_user_id, created_at, is_editable)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE) RETURNING id
+        ''', (title, code, session['user_id']))
+        
+        test_id = cur.fetchone()['id']
         
         for idx, q in enumerate(questions):
-            cur.execute('''INSERT INTO test_questions (test_id, question_text, question_type, options, order_index, correct_answer, points)
-                           VALUES (?, ?, ?, ?, ?, ?, ?)''',
-                       (test_id, q.get('text'), q.get('type', 'text'),
-                        json.dumps(q.get('options', [])), idx, q.get('correct_answer'), q.get('points', 1)))
+            correct_ans = q.get('correct_answer')
+            points = q.get('points', 1)
+            options = q.get('options', [])
+            
+            cur.execute('''
+                INSERT INTO test_questions (test_id, question_text, question_type, 
+                                            options, order_index, correct_answer, points)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (test_id, q.get('text'), q.get('type', 'text'), 
+                  json.dumps(options) if options else None, 
+                  idx, correct_ans, points))
         
         conn.commit()
         
-        # Генерация QR кодов
+        # Генерация QR кода
         qr_data = f"{request.host_url}take_test?code={code}"
         qr_img = qrcode.make(qr_data)
         buffered = io.BytesIO()
         qr_img.save(buffered, format="PNG")
         qr_base64 = base64.b64encode(buffered.getvalue()).decode()
         
-        game_qr_data = f"{request.host_url}game_player/{code}"
-        game_qr_img = qrcode.make(game_qr_data)
-        game_buffered = io.BytesIO()
-        game_qr_img.save(game_buffered, format="PNG")
-        game_qr_base64 = base64.b64encode(game_buffered.getvalue()).decode()
-        
+        cur.close()
         conn.close()
         
         return jsonify({
-            'success': True,
-            'message': 'Тест создан',
+            'success': True, 
+            'message': 'Тест создан!', 
             'code': code,
             'qr_code': qr_base64,
-            'game_qr_code': game_qr_base64,
             'test_id': test_id
         })
+    
     except Exception as e:
-        print(f"Create test error: {e}")
+        print(f"Error creating test: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get_test_by_code', methods=['POST'])
@@ -366,19 +394,260 @@ def get_test_by_code():
     try:
         data = request.json
         code = data.get('code')
+        
         if not code:
-            return jsonify({'error': 'Введите код'}), 400
+            return jsonify({'error': 'Введите код теста'}), 400
         
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id, title, unique_code, created_by_user_id, game_mode, time_per_question FROM tests WHERE unique_code = ?", (code.upper(),))
+        
+        cur.execute('''
+            SELECT id, title, unique_code, created_by_user_id
+            FROM tests WHERE unique_code = %s
+        ''', (code.upper(),))
+        
         test = cur.fetchone()
         
         if not test:
+            cur.close()
             conn.close()
             return jsonify({'error': 'Тест не найден'}), 404
         
-        cur.execute("SELECT id, question_text, question_type, options, correct_answer, points, order_index FROM test_questions WHERE test_id = ? ORDER BY order_index", (test['id'],))
+        cur.execute('''
+            SELECT id, question_text, question_type, options, correct_answer, points, order_index
+            FROM test_questions WHERE test_id = %s ORDER BY order_index
+        ''', (test['id'],))
+        
+        questions = cur.fetchall()
+        
+        result_questions = []
+        for q in questions:
+            q_dict = dict(q)
+            if q_dict['options']:
+                try:
+                    q_dict['options'] = json.loads(q_dict['options'])
+                except:
+                    q_dict['options'] = []
+            else:
+                q_dict['options'] = []
+            result_questions.append(q_dict)
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'test': {
+                'id': test['id'],
+                'title': test['title'],
+                'code': test['unique_code'],
+                'created_by_user_id': test['created_by_user_id'],
+                'questions': result_questions
+            }
+        })
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/submit_test', methods=['POST'])
+@login_required
+def submit_test():
+    try:
+        data = request.json
+        test_id = data.get('test_id')
+        answers = data.get('answers', {})
+        
+        if not test_id:
+            return jsonify({'error': 'ID теста обязателен!'}), 400
+        
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Получаем вопросы теста
+        cur.execute('''
+            SELECT id, correct_answer, question_type, points, question_text
+            FROM test_questions WHERE test_id = %s
+        ''', (test_id,))
+        
+        questions = cur.fetchall()
+        
+        total_score = 0
+        max_possible_score = 0
+        detailed_results = []
+        
+        for q in questions:
+            max_possible_score += q['points']
+            user_answer = answers.get(str(q['id']))
+            
+            is_correct = check_answer(q['question_type'], user_answer, q['correct_answer'])
+            
+            if is_correct:
+                total_score += q['points']
+            
+            detailed_results.append({
+                'question_id': q['id'],
+                'question_text': q['question_text'],
+                'user_answer': user_answer or '(не указан)',
+                'correct_answer': q['correct_answer'] or '(нет ответа)',
+                'points_earned': q['points'] if is_correct else 0,
+                'max_points': q['points'],
+                'is_correct': is_correct,
+                'question_type': q['question_type']
+            })
+        
+        # Сохраняем результат
+        cur.execute('''
+            INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s) RETURNING id
+        ''', (test_id, session['user_id'], total_score, max_possible_score, json.dumps(detailed_results, ensure_ascii=False)))
+        
+        result_id = cur.fetchone()['id']
+        
+        # Сохраняем детальные ответы
+        for detail in detailed_results:
+            cur.execute('''
+                INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (result_id, detail['question_id'], detail['user_answer'], detail['is_correct'], detail['points_earned']))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        percentage = (total_score / max_possible_score * 100) if max_possible_score > 0 else 0
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Тест пройден! Результат сохранен.',
+            'score': total_score,
+            'max_score': max_possible_score,
+            'percentage': round(percentage, 1),
+            'result_id': result_id,
+            'detailed_results': detailed_results
+        })
+    
+    except Exception as e:
+        print(f"Error submitting test: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_my_results_detail/<int:result_id>', methods=['GET'])
+@login_required
+def get_my_results_detail(result_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
+            FROM test_results tr
+            JOIN tests t ON tr.test_id = t.id
+            WHERE tr.id = %s AND tr.user_id = %s
+        ''', (result_id, session['user_id']))
+        
+        result = cur.fetchone()
+        
+        if not result:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Результат не найден'}), 404
+        
+        cur.execute('''
+            SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
+            FROM test_answers_detail tad
+            JOIN test_questions tq ON tad.question_id = tq.id
+            WHERE tad.result_id = %s
+        ''', (result_id,))
+        
+        details = cur.fetchall()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'result': dict(result),
+            'details': [dict(d) for d in details]
+        })
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_my_tests', methods=['GET'])
+@login_required
+def get_my_tests():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT t.id, t.title, t.unique_code, t.created_at,
+                   (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
+            FROM tests t
+            WHERE t.created_by_user_id = %s
+            ORDER BY t.created_at DESC
+        ''', (session['user_id'],))
+        
+        tests = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify([dict(t) for t in tests])
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_all_tests', methods=['GET'])
+def get_all_tests():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT t.id, t.title, t.unique_code, t.created_at, u.username as creator_name,
+                   (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
+            FROM tests t
+            LEFT JOIN users u ON t.created_by_user_id = u.id
+            ORDER BY t.created_at DESC
+            LIMIT 10
+        ''')
+        
+        tests = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify([dict(t) for t in tests])
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_test_for_edit/<int:test_id>', methods=['GET'])
+@login_required
+def get_test_for_edit(test_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT id, title, unique_code FROM tests 
+            WHERE id = %s AND created_by_user_id = %s
+        ''', (test_id, session['user_id']))
+        
+        test = cur.fetchone()
+        
+        if not test:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Тест не найден или у вас нет прав'}), 404
+        
+        cur.execute('''
+            SELECT id, question_text, question_type, options, correct_answer, points, order_index
+            FROM test_questions WHERE test_id = %s ORDER BY order_index
+        ''', (test_id,))
+        
         questions = []
         for row in cur.fetchall():
             q = dict(row)
@@ -391,79 +660,137 @@ def get_test_by_code():
                 q['options'] = []
             questions.append(q)
         
+        cur.close()
         conn.close()
         
         return jsonify({
             'success': True,
-            'test': {
-                'id': test['id'],
-                'title': test['title'],
-                'code': test['unique_code'],
-                'game_mode': test['game_mode'],
-                'time_per_question': test['time_per_question'],
-                'questions': questions
-            }
+            'test': dict(test),
+            'questions': questions
         })
+    
     except Exception as e:
-        print(f"Get test error: {e}")
+        print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-@app.route('/api/submit_test', methods=['POST'])
+@app.route('/api/update_test/<int:test_id>', methods=['PUT'])
 @login_required
-def submit_test():
+def update_test(test_id):
     try:
         data = request.json
-        test_id = data.get('test_id')
-        answers = data.get('answers', {})
+        title = data.get('title')
+        questions = data.get('questions', [])
+        
+        if not title or not questions:
+            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
         
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id, correct_answer, question_type, points FROM test_questions WHERE test_id = ?", (test_id,))
-        questions = cur.fetchall()
         
-        total_score = 0
-        max_score = 0
-        details = []
+        cur.execute('''
+            SELECT id FROM tests WHERE id = %s AND created_by_user_id = %s AND is_editable = TRUE
+        ''', (test_id, session['user_id']))
         
-        for q in questions:
-            max_score += q['points']
-            user_answer = answers.get(str(q['id']))
-            is_correct = check_answer(q['question_type'], user_answer, q['correct_answer'])
-            if is_correct:
-                total_score += q['points']
-            details.append({
-                'question_id': q['id'],
-                'user_answer': user_answer or '',
-                'is_correct': is_correct,
-                'points_earned': q['points'] if is_correct else 0
-            })
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'У вас нет прав на редактирование этого теста'}), 403
         
-        cur.execute('''INSERT INTO test_results (test_id, user_id, score, max_score, answers_json)
-                       VALUES (?, ?, ?, ?, ?)''',
-                   (test_id, session['user_id'], total_score, max_score, json.dumps(details)))
-        result_id = cur.lastrowid
+        cur.execute("UPDATE tests SET title = %s WHERE id = %s", (title, test_id))
+        cur.execute("DELETE FROM test_questions WHERE test_id = %s", (test_id,))
         
-        for d in details:
-            cur.execute('''INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
-                           VALUES (?, ?, ?, ?, ?)''',
-                       (result_id, d['question_id'], d['user_answer'], 1 if d['is_correct'] else 0, d['points_earned']))
+        for idx, q in enumerate(questions):
+            correct_ans = q.get('correct_answer')
+            points = q.get('points', 1)
+            options = q.get('options', [])
+            
+            cur.execute('''
+                INSERT INTO test_questions (test_id, question_text, question_type, 
+                                            options, order_index, correct_answer, points)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (test_id, q.get('text'), q.get('type', 'text'), 
+                  json.dumps(options) if options else None, 
+                  idx, correct_ans, points))
         
         conn.commit()
+        cur.close()
         conn.close()
         
-        percentage = (total_score / max_score * 100) if max_score > 0 else 0
+        return jsonify({'success': True, 'message': 'Тест обновлен!'})
+    
+    except Exception as e:
+        print(f"Error updating test: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_test_results/<int:test_id>', methods=['GET'])
+@login_required
+def get_test_results(test_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Проверяем, что пользователь - создатель теста
+        cur.execute('''
+            SELECT created_by_user_id FROM tests WHERE id = %s
+        ''', (test_id,))
+        test = cur.fetchone()
+        
+        if not test:
+            return jsonify({'error': 'Тест не найден'}), 404
+            
+        if test['created_by_user_id'] != session['user_id'] and session.get('role') != 'admin':
+            return jsonify({'error': 'Нет прав для просмотра результатов'}), 403
+        
+        # Получаем результаты с ФИО студентов
+        cur.execute('''
+            SELECT 
+                tr.id,
+                tr.score,
+                tr.max_score,
+                tr.completed_at,
+                u.full_name,
+                u.username,
+                u.email,
+                ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage
+            FROM test_results tr
+            JOIN users u ON tr.user_id = u.id
+            WHERE tr.test_id = %s
+            ORDER BY tr.completed_at DESC
+        ''', (test_id,))
+        
+        results = cur.fetchall()
+        
+        # Статистика по тесту
+        cur.execute('''
+            SELECT 
+                COUNT(*) as total_attempts,
+                AVG(score * 100.0 / NULLIF(max_score, 0)) as avg_score,
+                MAX(score) as max_score
+            FROM test_results
+            WHERE test_id = %s
+        ''', (test_id,))
+        stats = cur.fetchone()
+        
+        # Информация о тесте
+        cur.execute('SELECT title FROM tests WHERE id = %s', (test_id,))
+        test_info = cur.fetchone()
+        
+        cur.close()
+        conn.close()
         
         return jsonify({
             'success': True,
-            'message': 'Тест пройден',
-            'score': total_score,
-            'max_score': max_score,
-            'percentage': round(percentage, 1),
-            'result_id': result_id,
-            'detailed_results': details
+            'test': {'title': test_info['title']},
+            'results': [dict(r) for r in results],
+            'stats': {
+                'total_attempts': stats['total_attempts'] or 0,
+                'avg_score': round(stats['avg_score'] or 0, 1),
+                'max_score': stats['max_score'] or 0
+            }
         })
+        
     except Exception as e:
-        print(f"Submit error: {e}")
+        print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/my_results', methods=['GET'])
@@ -472,274 +799,50 @@ def my_results():
     try:
         conn = get_db()
         cur = conn.cursor()
-        cur.execute('''SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, t.unique_code
-                       FROM test_results tr JOIN tests t ON tr.test_id = t.id
-                       WHERE tr.user_id = ? ORDER BY tr.completed_at DESC''', (session['user_id'],))
-        results = []
-        for row in cur.fetchall():
-            results.append({
-                'id': row['id'],
-                'score': row['score'],
-                'max_score': row['max_score'],
-                'completed_at': row['completed_at'],
-                'title': row['title'],
-                'unique_code': row['unique_code'],
-                'percentage': round(row['score'] / row['max_score'] * 100, 1) if row['max_score'] > 0 else 0
-            })
-        conn.close()
         
-        total_tests = len(results)
+        cur.execute('''
+            SELECT tr.id, tr.score, tr.max_score, tr.completed_at,
+                   t.title, t.unique_code,
+                   ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage
+            FROM test_results tr
+            JOIN tests t ON tr.test_id = t.id
+            WHERE tr.user_id = %s
+            ORDER BY tr.completed_at DESC
+        ''', (session['user_id'],))
+        
+        results = cur.fetchall()
+        
         avg_percentage = 0
         best_percentage = 0
         if results:
-            percentages = [r['percentage'] for r in results]
+            percentages = [r['percentage'] or 0 for r in results]
             avg_percentage = sum(percentages) / len(percentages)
             best_percentage = max(percentages)
         
+        cur.close()
+        conn.close()
+        
         return jsonify({
-            'results': results,
+            'results': [dict(r) for r in results],
             'stats': {
-                'total_tests': total_tests,
+                'total_tests': len(results),
                 'avg_percentage': round(avg_percentage, 1),
                 'best_percentage': round(best_percentage, 1)
             }
         })
-    except Exception as e:
-        print(f"My results error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_my_tests', methods=['GET'])
-@login_required
-def get_my_tests():
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute("SELECT id, title, unique_code, created_at, game_mode FROM tests WHERE created_by_user_id = ? ORDER BY created_at DESC", (session['user_id'],))
-        tests = []
-        for row in cur.fetchall():
-            tests.append({
-                'id': row['id'],
-                'title': row['title'],
-                'unique_code': row['unique_code'],
-                'created_at': row['created_at'],
-                'game_mode': row['game_mode']
-            })
-        conn.close()
-        return jsonify(tests)
-    except Exception as e:
-        print(f"Get my tests error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_my_results_detail/<int:result_id>', methods=['GET'])
-@login_required
-def get_my_results_detail(result_id):
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
-            FROM test_results tr JOIN tests t ON tr.test_id = t.id
-            WHERE tr.id = ? AND tr.user_id = ?
-        ''', (result_id, session['user_id']))
-        result = cur.fetchone()
-        if not result:
-            conn.close()
-            return jsonify({'error': 'Результат не найден'}), 404
-        
-        cur.execute('''
-            SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
-            FROM test_answers_detail tad JOIN test_questions tq ON tad.question_id = tq.id
-            WHERE tad.result_id = ?
-        ''', (result_id,))
-        details = []
-        for row in cur.fetchall():
-            details.append(dict(row))
-        conn.close()
-        
-        return jsonify({
-            'success': True,
-            'result': dict(result),
-            'details': details
-        })
-    except Exception as e:
-        print(f"Detail error: {e}")
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/get_all_tests', methods=['GET'])
-def get_all_tests():
-    """Получение всех тестов для главной страницы"""
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        cur.execute('''
-            SELECT t.id, t.title, t.unique_code, t.created_at, 
-                   COALESCE(u.username, 'Unknown') as creator_name
-            FROM tests t
-            LEFT JOIN users u ON t.created_by_user_id = u.id
-            ORDER BY t.created_at DESC
-        ''')
-        tests = []
-        for row in cur.fetchall():
-            tests.append({
-                'id': row['id'],
-                'title': row['title'],
-                'unique_code': row['unique_code'],
-                'created_at': row['created_at'],
-                'creator_name': row['creator_name']
-            })
-        conn.close()
-        return jsonify(tests)
-    except Exception as e:
-        print(f"Get all tests error: {e}")
-        return jsonify([])  # Возвращаем пустой массив вместо ошибки
-
-@app.route('/api/stats', methods=['GET'])
-def get_stats():
-    """Получение статистики для главной страницы"""
-    try:
-        conn = get_db()
-        cur = conn.cursor()
-        
-        cur.execute("SELECT COUNT(*) FROM tests")
-        tests_count = cur.fetchone()[0]
-        
-        cur.execute("SELECT COUNT(*) FROM test_results")
-        attempts_count = cur.fetchone()[0]
-        
-        cur.execute("SELECT COUNT(*) FROM users WHERE role = 'student'")
-        students_count = cur.fetchone()[0]
-        
-        conn.close()
-        return jsonify({
-            'tests': tests_count,
-            'attempts': attempts_count,
-            'students': students_count
-        })
-    except Exception as e:
-        print(f"Stats error: {e}")
-        return jsonify({'tests': 0, 'attempts': 0, 'students': 3})
-
-# ==================== WEBSOCKET СОБЫТИЯ ====================
-
-@socketio.on('join_game_host')
-def handle_join_host(data):
-    code = data.get('game_code')
-    if code:
-        join_room(code)
-        if code not in active_games:
-            active_games[code] = {'players': {}, 'current': -1, 'active': False, 'questions': [], 'time': 10}
-        active_games[code]['host_sid'] = request.sid
-        emit('host_connected', {'message': 'Подключен как ведущий'}, room=request.sid)
-
-@socketio.on('join_game_player')
-def handle_join_player(data):
-    code = data.get('game_code')
-    uid = data.get('user_id')
-    name = data.get('username')
-    if code in active_games and uid:
-        join_room(code)
-        if uid not in active_games[code]['players']:
-            active_games[code]['players'][uid] = {'name': name, 'answers': {}, 'score': 0}
-        active_games[code]['players'][uid]['sid'] = request.sid
-        players_list = [{'username': p['name']} for p in active_games[code]['players'].values()]
-        emit('players_update', {'players': players_list}, room=code)
-        emit('player_joined', {'username': name, 'count': len(players_list)}, room=code)
-
-@socketio.on('start_game')
-def handle_start(data):
-    code = data.get('game_code')
-    if code in active_games:
-        game = active_games[code]
-        game['questions'] = data.get('questions', [])
-        game['time'] = data.get('time', 10)
-        game['active'] = True
-        game['current'] = -1
-        emit('game_started', {'total_questions': len(game['questions'])}, room=code)
-        
-        def start_first():
-            socketio.emit('next_question', room=code)
-        threading.Timer(2, start_first).start()
-
-@socketio.on('next_question')
-def handle_next():
-    for code, game in active_games.items():
-        if request.sid == game.get('host_sid'):
-            game['current'] += 1
-            if game['current'] < len(game['questions']):
-                q = game['questions'][game['current']]
-                emit('question_start', {
-                    'question_index': game['current'],
-                    'question': {
-                        'text': q.get('text'),
-                        'type': q.get('type'),
-                        'options': q.get('options', []),
-                        'points': q.get('points', 1)
-                    },
-                    'time_left': game['time']
-                }, room=code)
-                
-                def end_q():
-                    socketio.emit('time_up', room=code)
-                    threading.Timer(2, lambda: show_results(code)).start()
-                threading.Timer(game['time'], end_q).start()
-            else:
-                end_game(code)
-            break
-
-@socketio.on('submit_answer')
-def handle_answer(data):
-    code = data.get('game_code')
-    uid = data.get('user_id')
-    qidx = data.get('question_index')
-    answer = data.get('answer')
     
-    if code in active_games and uid in active_games[code]['players']:
-        game = active_games[code]
-        if qidx < len(game['questions']):
-            q = game['questions'][qidx]
-            is_correct = check_answer(q.get('type'), answer, q.get('correct_answer'))
-            points = q.get('points', 1) if is_correct else 0
-            game['players'][uid]['answers'][qidx] = {'correct': is_correct, 'points': points}
-            game['players'][uid]['score'] += points
-            emit('player_question_result', {
-                'is_correct': is_correct,
-                'points_earned': points,
-                'total_score': game['players'][uid]['score']
-            }, room=request.sid)
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
 
-def show_results(code):
-    if code in active_games:
-        game = active_games[code]
-        current = game['current']
-        total = len(game['players'])
-        correct = sum(1 for p in game['players'].values() if p['answers'].get(current, {}).get('correct', False))
-        emit('question_results', {
-            'total_players': total,
-            'correct_count': correct,
-            'percentage': round(correct/total*100, 1) if total > 0 else 0
-        }, room=code)
-        threading.Timer(3, lambda: socketio.emit('next_question', room=code)).start()
-
-def end_game(code):
-    if code in active_games:
-        game = active_games[code]
-        results = [{'username': p['name'], 'score': p['score']} for p in game['players'].values()]
-        results.sort(key=lambda x: x['score'], reverse=True)
-        emit('game_ended', {'results': results}, room=code)
-        del active_games[code]
-
-# ==================== ЗАПУСК ====================
-
+# Запуск
 if __name__ == '__main__':
-    # Инициализируем базу данных
     init_db()
-    
-    port = int(os.getenv('PORT', 3000))
     print("=" * 50)
-    print(f"🚀 Server: http://localhost:{port}")
-    print("📁 Database:", DATABASE)
-    print("👨‍💼 Admin: admin / admin123")
-    print("👨‍🏫 Teacher: teacher / teacher123")
-    print("👨‍🎓 Student: student / student123")
+    print("🚀 Server: http://localhost:3000")
+    print("📁 Database: PostgreSQL")
+    print("👨‍💼 Admin login: admin / admin123")
+    print("👨‍🏫 Teacher login: teacher / teacher123")
+    print("👨‍🎓 Student login: student / student123")
     print("=" * 50)
-    socketio.run(app, host='0.0.0.0', port=port, debug=False)
+    app.run(debug=False, port=3000, host='0.0.0.0')
