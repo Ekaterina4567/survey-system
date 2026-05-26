@@ -1,264 +1,135 @@
-from flask import Flask, render_template, request, jsonify, session, redirect, url_for
-from flask_socketio import SocketIO, emit, join_room, leave_room
-import sqlite3
 import os
 import json
 import secrets
+import hashlib
 import qrcode
 import io
 import base64
 from datetime import datetime
 from functools import wraps
-import hashlib
-import threading
-import time
+from flask import Flask, render_template, request, jsonify, session, redirect, url_for
+from dotenv import load_dotenv
+import psycopg2
+from psycopg2.extras import RealDictCursor
+from psycopg2.pool import SimpleConnectionPool
+
+load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
-socketio = SocketIO(app, cors_allowed_origins="*")
+# PostgreSQL connection pool
+DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://survey_user:Fd25hZNEWtBryhp1j7b43xVVdgp7hz95@dpg-d8a7p66gvqtc73ck7c30-a.oregon-postgres.render.com/survey_db_ks4f')
 
-# Хранилище активных игр
-active_games = {}
+# Добавляем sslmode=require если нужно
+if '?' not in DATABASE_URL:
+    DATABASE_URL += '?sslmode=require'
 
-# Определяем тип базы данных
-DATABASE_URL = os.getenv('DATABASE_URL', '')
-USE_POSTGRES = DATABASE_URL.startswith('postgres')
+def get_db():
+    """Получение соединения с PostgreSQL"""
+    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+    return conn
 
-if USE_POSTGRES:
-    import psycopg2
-    import psycopg2.extras
+def init_db():
+    """Инициализация базы данных PostgreSQL"""
+    conn = get_db()
+    cur = conn.cursor()
     
-    def get_db():
-        conn = psycopg2.connect(DATABASE_URL)
-        return conn
+    # Таблица пользователей
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS users (
+            id SERIAL PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT UNIQUE NOT NULL,
+            password_hash TEXT NOT NULL,
+            plain_password TEXT,
+            role TEXT DEFAULT 'student',
+            full_name TEXT,
+            is_active BOOLEAN DEFAULT TRUE,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
     
-    def init_db():
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # Таблица пользователей
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id SERIAL PRIMARY KEY,
-                username TEXT UNIQUE NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                plain_password TEXT,
-                role TEXT DEFAULT 'student',
-                full_name TEXT,
-                is_active INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Таблица тестов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS tests (
-                id SERIAL PRIMARY KEY,
-                title TEXT NOT NULL,
-                unique_code TEXT UNIQUE NOT NULL,
-                created_by_user_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_editable INTEGER DEFAULT 1,
-                game_mode INTEGER DEFAULT 0,
-                time_per_question INTEGER DEFAULT 10,
-                FOREIGN KEY (created_by_user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Таблица вопросов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS test_questions (
-                id SERIAL PRIMARY KEY,
-                test_id INTEGER NOT NULL,
-                question_text TEXT NOT NULL,
-                question_type TEXT DEFAULT 'choice',
-                options TEXT,
-                order_index INTEGER DEFAULT 0,
-                correct_answer TEXT,
-                points INTEGER DEFAULT 1,
-                FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Таблица результатов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS test_results (
-                id SERIAL PRIMARY KEY,
-                test_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                score INTEGER DEFAULT 0,
-                max_score INTEGER DEFAULT 0,
-                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                answers_json TEXT,
-                game_session_id TEXT,
-                FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Таблица детальных ответов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS test_answers_detail (
-                id SERIAL PRIMARY KEY,
-                result_id INTEGER NOT NULL,
-                question_id INTEGER NOT NULL,
-                user_answer TEXT,
-                is_correct INTEGER DEFAULT 0,
-                points_earned INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (result_id) REFERENCES test_results (id) ON DELETE CASCADE,
-                FOREIGN KEY (question_id) REFERENCES test_questions (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Создаём индексы
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_tests_code ON tests(unique_code)')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_results_user ON test_results(user_id)')
-        
-        # Создаём тестовых пользователей
-        admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cur.execute('''
-            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-            SELECT 'admin', 'admin@survey.com', %s, 'admin123', 'admin', 'Администратор', 1
-            WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
-        ''', (admin_hash,))
-        
-        teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
-        cur.execute('''
-            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-            SELECT 'teacher', 'teacher@survey.com', %s, 'teacher123', 'teacher', 'Преподаватель', 1
-            WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
-        ''', (teacher_hash,))
-        
-        student_hash = hashlib.sha256("student123".encode()).hexdigest()
-        cur.execute('''
-            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-            SELECT 'student', 'student@survey.com', %s, 'student123', 'student', 'Студент', 1
-            WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'student')
-        ''', (student_hash,))
-        
-        conn.commit()
-        conn.close()
-        print("✅ PostgreSQL база данных инициализирована!")
-else:
-    DATABASE = 'survey.db'
+    # Таблица тестов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS tests (
+            id SERIAL PRIMARY KEY,
+            title TEXT NOT NULL,
+            unique_code TEXT UNIQUE NOT NULL,
+            created_by_user_id INTEGER REFERENCES users(id),
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_editable BOOLEAN DEFAULT TRUE
+        )
+    ''')
     
-    def get_db():
-        conn = sqlite3.connect(DATABASE)
-        conn.row_factory = sqlite3.Row
-        return conn
+    # Таблица вопросов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS test_questions (
+            id SERIAL PRIMARY KEY,
+            test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+            question_text TEXT NOT NULL,
+            question_type TEXT DEFAULT 'choice',
+            options TEXT,
+            order_index INTEGER DEFAULT 0,
+            correct_answer TEXT,
+            points INTEGER DEFAULT 1
+        )
+    ''')
     
-    def init_db():
-        conn = get_db()
-        cur = conn.cursor()
-        
-        # Таблица пользователей
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS users (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                username TEXT UNIQUE NOT NULL,
-                email TEXT UNIQUE NOT NULL,
-                password_hash TEXT NOT NULL,
-                plain_password TEXT,
-                role TEXT DEFAULT 'student',
-                full_name TEXT,
-                is_active INTEGER DEFAULT 1,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-            )
-        ''')
-        
-        # Таблица тестов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS tests (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                title TEXT NOT NULL,
-                unique_code TEXT UNIQUE NOT NULL,
-                created_by_user_id INTEGER,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                is_editable INTEGER DEFAULT 1,
-                game_mode INTEGER DEFAULT 0,
-                time_per_question INTEGER DEFAULT 10,
-                FOREIGN KEY (created_by_user_id) REFERENCES users (id)
-            )
-        ''')
-        
-        # Таблица вопросов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS test_questions (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                test_id INTEGER NOT NULL,
-                question_text TEXT NOT NULL,
-                question_type TEXT DEFAULT 'choice',
-                options TEXT,
-                order_index INTEGER DEFAULT 0,
-                correct_answer TEXT,
-                points INTEGER DEFAULT 1,
-                FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Таблица результатов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS test_results (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                test_id INTEGER NOT NULL,
-                user_id INTEGER NOT NULL,
-                score INTEGER DEFAULT 0,
-                max_score INTEGER DEFAULT 0,
-                completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                answers_json TEXT,
-                game_session_id TEXT,
-                FOREIGN KEY (test_id) REFERENCES tests (id) ON DELETE CASCADE,
-                FOREIGN KEY (user_id) REFERENCES users (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Таблица детальных ответов
-        cur.execute('''
-            CREATE TABLE IF NOT EXISTS test_answers_detail (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                result_id INTEGER NOT NULL,
-                question_id INTEGER NOT NULL,
-                user_answer TEXT,
-                is_correct INTEGER DEFAULT 0,
-                points_earned INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                FOREIGN KEY (result_id) REFERENCES test_results (id) ON DELETE CASCADE,
-                FOREIGN KEY (question_id) REFERENCES test_questions (id) ON DELETE CASCADE
-            )
-        ''')
-        
-        # Индексы
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_tests_code ON tests(unique_code)')
-        cur.execute('CREATE INDEX IF NOT EXISTS idx_results_user ON test_results(user_id)')
-        
-        # Создаём тестовых пользователей
-        admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
-        cur.execute('''
-            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-            SELECT 'admin', 'admin@survey.com', ?, 'admin123', 'admin', 'Администратор', 1
-            WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
-        ''', (admin_hash,))
-        
-        teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
-        cur.execute('''
-            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-            SELECT 'teacher', 'teacher@survey.com', ?, 'teacher123', 'teacher', 'Преподаватель', 1
-            WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
-        ''', (teacher_hash,))
-        
-        student_hash = hashlib.sha256("student123".encode()).hexdigest()
-        cur.execute('''
-            INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-            SELECT 'student', 'student@survey.com', ?, 'student123', 'student', 'Студент', 1
-            WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'student')
-        ''', (student_hash,))
-        
-        conn.commit()
-        conn.close()
-        print("✅ SQLite база данных инициализирована!")
+    # Таблица результатов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS test_results (
+            id SERIAL PRIMARY KEY,
+            test_id INTEGER NOT NULL REFERENCES tests(id) ON DELETE CASCADE,
+            user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            score INTEGER DEFAULT 0,
+            max_score INTEGER DEFAULT 0,
+            completed_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            answers_json TEXT
+        )
+    ''')
+    
+    # Таблица детальных ответов
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS test_answers_detail (
+            id SERIAL PRIMARY KEY,
+            result_id INTEGER NOT NULL REFERENCES test_results(id) ON DELETE CASCADE,
+            question_id INTEGER NOT NULL REFERENCES test_questions(id) ON DELETE CASCADE,
+            user_answer TEXT,
+            is_correct BOOLEAN DEFAULT FALSE,
+            points_earned INTEGER DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    ''')
+    
+    # Создаём тестового админа (пароль: admin123)
+    admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'admin', 'admin@survey.com', %s, 'admin123', 'admin', 'Администратор', TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
+    ''', (admin_hash,))
+    
+    # Создаём тестового преподавателя
+    teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'teacher', 'teacher@survey.com', %s, 'teacher123', 'teacher', 'Преподаватель', TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
+    ''', (teacher_hash,))
+    
+    # Создаём тестового студента
+    student_hash = hashlib.sha256("student123".encode()).hexdigest()
+    cur.execute('''
+        INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
+        SELECT 'student', 'student@survey.com', %s, 'student123', 'student', 'Студент', TRUE
+        WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'student')
+    ''', (student_hash,))
+    
+    conn.commit()
+    cur.close()
+    conn.close()
+    print("✅ PostgreSQL база данных инициализирована!")
 
 def login_required(f):
     @wraps(f)
@@ -273,11 +144,9 @@ def generate_unique_code():
         code = secrets.token_urlsafe(6).upper().replace('-', 'X').replace('_', 'Y')
         conn = get_db()
         cur = conn.cursor()
-        if USE_POSTGRES:
-            cur.execute("SELECT id FROM tests WHERE unique_code = %s", (code,))
-        else:
-            cur.execute("SELECT id FROM tests WHERE unique_code = ?", (code,))
+        cur.execute("SELECT id FROM tests WHERE unique_code = %s", (code,))
         result = cur.fetchone()
+        cur.close()
         conn.close()
         if not result:
             return code
@@ -335,17 +204,11 @@ def create_test_page():
         return redirect(url_for('login_page'))
     return render_template('create_test.html', user=session)
 
-@app.route('/game_host/<code>')
-def game_host(code):
+@app.route('/edit_test_page/<int:test_id>')
+def edit_test_page(test_id):
     if 'user_id' not in session:
         return redirect(url_for('login_page'))
-    return render_template('game_host.html', code=code, user=session)
-
-@app.route('/game_player/<code>')
-def game_player(code):
-    if 'user_id' not in session:
-        return redirect(url_for('login_page'))
-    return render_template('game_player.html', code=code, user=session)
+    return render_template('edit_test.html', test_id=test_id, user=session)
 
 @app.route('/take_test')
 def take_test():
@@ -359,7 +222,24 @@ def result_detail(result_id):
         return redirect(url_for('login_page'))
     return render_template('result_detail.html', result_id=result_id, user=session)
 
-# ===== API МАРШРУТЫ =====
+@app.route('/admin')
+def admin():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+    return redirect(url_for('create_test_page'))
+
+@app.route('/teacher_dashboard')
+def teacher_dashboard():
+    if 'user_id' not in session:
+        return redirect(url_for('login_page'))
+    return redirect(url_for('student_dashboard'))
+
+@app.route('/qr_redirect')
+def qr_redirect():
+    """Страница для редиректа через QR-код"""
+    return render_template('qr_redirect.html')
+
+# ===== API =====
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -377,30 +257,21 @@ def register():
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
-        else:
-            cur.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
-        
+        cur.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
         if cur.fetchone():
+            cur.close()
             conn.close()
             return jsonify({'error': 'Пользователь уже существует!'}), 400
         
         password_hash = hash_password(password)
-        if USE_POSTGRES:
-            cur.execute('''
-                INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
-                VALUES (%s, %s, %s, %s, %s, 1, %s) RETURNING id
-            ''', (username, email, password_hash, role, full_name, password))
-            user_id = cur.fetchone()[0]
-        else:
-            cur.execute('''
-                INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
-                VALUES (?, ?, ?, ?, ?, 1, ?)
-            ''', (username, email, password_hash, role, full_name, password))
-            user_id = cur.lastrowid
+        cur.execute('''
+            INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
+            VALUES (%s, %s, %s, %s, %s, TRUE, %s) RETURNING id
+        ''', (username, email, password_hash, role, full_name, password))
         
+        user_id = cur.fetchone()['id']
         conn.commit()
+        cur.close()
         conn.close()
         
         return jsonify({'success': True, 'message': 'Регистрация успешна!', 'user_id': user_id})
@@ -420,32 +291,27 @@ def login():
         cur = conn.cursor()
         
         password_hash = hash_password(password)
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT * FROM users 
-                WHERE (username = %s OR email = %s) AND password_hash = %s AND is_active = 1
-            ''', (username, username, password_hash))
-        else:
-            cur.execute('''
-                SELECT * FROM users 
-                WHERE (username = ? OR email = ?) AND password_hash = ? AND is_active = 1
-            ''', (username, username, password_hash))
+        cur.execute('''
+            SELECT * FROM users 
+            WHERE (username = %s OR email = %s) AND password_hash = %s AND is_active = TRUE
+        ''', (username, username, password_hash))
         
         user = cur.fetchone()
+        cur.close()
         conn.close()
         
         if not user:
             return jsonify({'error': 'Неверные учетные данные!'}), 401
         
-        session['user_id'] = user[0] if USE_POSTGRES else user['id']
-        session['username'] = user[1] if USE_POSTGRES else user['username']
-        session['role'] = user[5] if USE_POSTGRES else user['role']
-        session['full_name'] = user[6] if USE_POSTGRES else user['full_name']
+        session['user_id'] = user['id']
+        session['username'] = user['username']
+        session['role'] = user['role']
+        session['full_name'] = user['full_name']
         
         return jsonify({
             'success': True, 
             'message': 'Вход выполнен!',
-            'role': session['role'],
+            'role': user['role'],
             'redirect': '/student_dashboard'
         })
     
@@ -471,8 +337,6 @@ def create_test():
         data = request.json
         title = data.get('title')
         questions = data.get('questions', [])
-        game_mode = data.get('game_mode', 0)
-        time_per_question = data.get('time_per_question', 10)
         
         if not title or not questions:
             return jsonify({'error': 'Название и вопросы обязательны!'}), 400
@@ -481,40 +345,25 @@ def create_test():
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute('''
-                INSERT INTO tests (title, unique_code, created_by_user_id, created_at, is_editable, game_mode, time_per_question)
-                VALUES (%s, %s, %s, CURRENT_TIMESTAMP, 1, %s, %s) RETURNING id
-            ''', (title, code, session['user_id'], game_mode, time_per_question))
-            test_id = cur.fetchone()[0]
-        else:
-            cur.execute('''
-                INSERT INTO tests (title, unique_code, created_by_user_id, created_at, is_editable, game_mode, time_per_question)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP, 1, ?, ?)
-            ''', (title, code, session['user_id'], game_mode, time_per_question))
-            test_id = cur.lastrowid
+        cur.execute('''
+            INSERT INTO tests (title, unique_code, created_by_user_id, created_at, is_editable)
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, TRUE) RETURNING id
+        ''', (title, code, session['user_id']))
+        
+        test_id = cur.fetchone()['id']
         
         for idx, q in enumerate(questions):
             correct_ans = q.get('correct_answer')
             points = q.get('points', 1)
             options = q.get('options', [])
             
-            if USE_POSTGRES:
-                cur.execute('''
-                    INSERT INTO test_questions (test_id, question_text, question_type, 
-                                                options, order_index, correct_answer, points)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ''', (test_id, q.get('text'), q.get('type', 'text'), 
-                      json.dumps(options) if options else None, 
-                      idx, correct_ans, points))
-            else:
-                cur.execute('''
-                    INSERT INTO test_questions (test_id, question_text, question_type, 
-                                                options, order_index, correct_answer, points)
-                    VALUES (?, ?, ?, ?, ?, ?, ?)
-                ''', (test_id, q.get('text'), q.get('type', 'text'), 
-                      json.dumps(options) if options else None, 
-                      idx, correct_ans, points))
+            cur.execute('''
+                INSERT INTO test_questions (test_id, question_text, question_type, 
+                                            options, order_index, correct_answer, points)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (test_id, q.get('text'), q.get('type', 'text'), 
+                  json.dumps(options) if options else None, 
+                  idx, correct_ans, points))
         
         conn.commit()
         
@@ -525,13 +374,7 @@ def create_test():
         qr_img.save(buffered, format="PNG")
         qr_base64 = base64.b64encode(buffered.getvalue()).decode()
         
-        # QR для игрового режима
-        game_qr_data = f"{request.host_url}game_player/{code}"
-        game_qr_img = qrcode.make(game_qr_data)
-        game_buffered = io.BytesIO()
-        game_qr_img.save(game_buffered, format="PNG")
-        game_qr_base64 = base64.b64encode(game_buffered.getvalue()).decode()
-        
+        cur.close()
         conn.close()
         
         return jsonify({
@@ -539,7 +382,6 @@ def create_test():
             'message': 'Тест создан!', 
             'code': code,
             'qr_code': qr_base64,
-            'game_qr_code': game_qr_base64,
             'test_id': test_id
         })
     
@@ -559,63 +401,28 @@ def get_test_by_code():
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT id, title, unique_code, created_by_user_id, game_mode, time_per_question
-                FROM tests WHERE unique_code = %s
-            ''', (code.upper(),))
-        else:
-            cur.execute('''
-                SELECT id, title, unique_code, created_by_user_id, game_mode, time_per_question
-                FROM tests WHERE unique_code = ?
-            ''', (code.upper(),))
+        cur.execute('''
+            SELECT id, title, unique_code, created_by_user_id
+            FROM tests WHERE unique_code = %s
+        ''', (code.upper(),))
         
-        test_row = cur.fetchone()
+        test = cur.fetchone()
         
-        if not test_row:
+        if not test:
+            cur.close()
             conn.close()
             return jsonify({'error': 'Тест не найден'}), 404
         
-        if USE_POSTGRES:
-            test = {
-                'id': test_row[0],
-                'title': test_row[1],
-                'unique_code': test_row[2],
-                'created_by_user_id': test_row[3],
-                'game_mode': test_row[4],
-                'time_per_question': test_row[5]
-            }
-        else:
-            test = dict(test_row)
+        cur.execute('''
+            SELECT id, question_text, question_type, options, correct_answer, points, order_index
+            FROM test_questions WHERE test_id = %s ORDER BY order_index
+        ''', (test['id'],))
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT id, question_text, question_type, options, correct_answer, points, order_index
-                FROM test_questions WHERE test_id = %s ORDER BY order_index
-            ''', (test['id'],))
-        else:
-            cur.execute('''
-                SELECT id, question_text, question_type, options, correct_answer, points, order_index
-                FROM test_questions WHERE test_id = ? ORDER BY order_index
-            ''', (test['id'],))
-        
-        questions_rows = cur.fetchall()
+        questions = cur.fetchall()
         
         result_questions = []
-        for row in questions_rows:
-            if USE_POSTGRES:
-                q_dict = {
-                    'id': row[0],
-                    'question_text': row[1],
-                    'question_type': row[2],
-                    'options': row[3],
-                    'correct_answer': row[4],
-                    'points': row[5],
-                    'order_index': row[6]
-                }
-            else:
-                q_dict = dict(row)
-            
+        for q in questions:
+            q_dict = dict(q)
             if q_dict['options']:
                 try:
                     q_dict['options'] = json.loads(q_dict['options'])
@@ -625,6 +432,7 @@ def get_test_by_code():
                 q_dict['options'] = []
             result_questions.append(q_dict)
         
+        cur.close()
         conn.close()
         
         return jsonify({
@@ -634,8 +442,6 @@ def get_test_by_code():
                 'title': test['title'],
                 'code': test['unique_code'],
                 'created_by_user_id': test['created_by_user_id'],
-                'game_mode': test['game_mode'],
-                'time_per_question': test['time_per_question'],
                 'questions': result_questions
             }
         })
@@ -651,7 +457,6 @@ def submit_test():
         data = request.json
         test_id = data.get('test_id')
         answers = data.get('answers', {})
-        game_session_id = data.get('game_session_id')
         
         if not test_id:
             return jsonify({'error': 'ID теста обязателен!'}), 400
@@ -659,31 +464,13 @@ def submit_test():
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT id, correct_answer, question_type, points, question_text
-                FROM test_questions WHERE test_id = %s
-            ''', (test_id,))
-        else:
-            cur.execute('''
-                SELECT id, correct_answer, question_type, points, question_text
-                FROM test_questions WHERE test_id = ?
-            ''', (test_id,))
+        # Получаем вопросы теста
+        cur.execute('''
+            SELECT id, correct_answer, question_type, points, question_text
+            FROM test_questions WHERE test_id = %s
+        ''', (test_id,))
         
-        questions_rows = cur.fetchall()
-        
-        questions = []
-        for row in questions_rows:
-            if USE_POSTGRES:
-                questions.append({
-                    'id': row[0],
-                    'correct_answer': row[1],
-                    'question_type': row[2],
-                    'points': row[3],
-                    'question_text': row[4]
-                })
-            else:
-                questions.append(dict(row))
+        questions = cur.fetchall()
         
         total_score = 0
         max_possible_score = 0
@@ -709,32 +496,23 @@ def submit_test():
                 'question_type': q['question_type']
             })
         
-        if USE_POSTGRES:
-            cur.execute('''
-                INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json, game_session_id)
-                VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s) RETURNING id
-            ''', (test_id, session['user_id'], total_score, max_possible_score, json.dumps(detailed_results, ensure_ascii=False), game_session_id))
-            result_id = cur.fetchone()[0]
-        else:
-            cur.execute('''
-                INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json, game_session_id)
-                VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
-            ''', (test_id, session['user_id'], total_score, max_possible_score, json.dumps(detailed_results, ensure_ascii=False), game_session_id))
-            result_id = cur.lastrowid
+        # Сохраняем результат
+        cur.execute('''
+            INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json)
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s) RETURNING id
+        ''', (test_id, session['user_id'], total_score, max_possible_score, json.dumps(detailed_results, ensure_ascii=False)))
         
+        result_id = cur.fetchone()['id']
+        
+        # Сохраняем детальные ответы
         for detail in detailed_results:
-            if USE_POSTGRES:
-                cur.execute('''
-                    INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
-                    VALUES (%s, %s, %s, %s, %s)
-                ''', (result_id, detail['question_id'], detail['user_answer'], 1 if detail['is_correct'] else 0, detail['points_earned']))
-            else:
-                cur.execute('''
-                    INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
-                    VALUES (?, ?, ?, ?, ?)
-                ''', (result_id, detail['question_id'], detail['user_answer'], 1 if detail['is_correct'] else 0, detail['points_earned']))
+            cur.execute('''
+                INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
+                VALUES (%s, %s, %s, %s, %s)
+            ''', (result_id, detail['question_id'], detail['user_answer'], detail['is_correct'], detail['points_earned']))
         
         conn.commit()
+        cur.close()
         conn.close()
         
         percentage = (total_score / max_possible_score * 100) if max_possible_score > 0 else 0
@@ -760,68 +538,36 @@ def get_my_results_detail(result_id):
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
-                FROM test_results tr
-                JOIN tests t ON tr.test_id = t.id
-                WHERE tr.id = %s AND tr.user_id = %s
-            ''', (result_id, session['user_id']))
-        else:
-            cur.execute('''
-                SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
-                FROM test_results tr
-                JOIN tests t ON tr.test_id = t.id
-                WHERE tr.id = ? AND tr.user_id = ?
-            ''', (result_id, session['user_id']))
+        cur.execute('''
+            SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
+            FROM test_results tr
+            JOIN tests t ON tr.test_id = t.id
+            WHERE tr.id = %s AND tr.user_id = %s
+        ''', (result_id, session['user_id']))
         
-        result_row = cur.fetchone()
+        result = cur.fetchone()
         
-        if not result_row:
+        if not result:
+            cur.close()
             conn.close()
             return jsonify({'error': 'Результат не найден'}), 404
         
-        if USE_POSTGRES:
-            result = {
-                'id': result_row[0],
-                'score': result_row[1],
-                'max_score': result_row[2],
-                'completed_at': result_row[3],
-                'title': result_row[4],
-                'answers_json': result_row[5]
-            }
-        else:
-            result = dict(result_row)
+        cur.execute('''
+            SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
+            FROM test_answers_detail tad
+            JOIN test_questions tq ON tad.question_id = tq.id
+            WHERE tad.result_id = %s
+        ''', (result_id,))
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
-                FROM test_answers_detail tad
-                JOIN test_questions tq ON tad.question_id = tq.id
-                WHERE tad.result_id = %s
-            ''', (result_id,))
-        else:
-            cur.execute('''
-                SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
-                FROM test_answers_detail tad
-                JOIN test_questions tq ON tad.question_id = tq.id
-                WHERE tad.result_id = ?
-            ''', (result_id,))
+        details = cur.fetchall()
         
-        details_rows = cur.fetchall()
-        details = []
-        for row in details_rows:
-            if USE_POSTGRES:
-                details.append(dict(zip(['id', 'result_id', 'question_id', 'user_answer', 'is_correct', 'points_earned', 'created_at', 'question_text', 'question_type', 'points', 'correct_answer'], row)))
-            else:
-                details.append(dict(row))
-        
+        cur.close()
         conn.close()
         
         return jsonify({
             'success': True,
-            'result': result,
-            'details': details
+            'result': dict(result),
+            'details': [dict(d) for d in details]
         })
     
     except Exception as e:
@@ -835,42 +581,214 @@ def get_my_tests():
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT t.id, t.title, t.unique_code, t.created_at, t.game_mode,
-                       (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
-                FROM tests t
-                WHERE t.created_by_user_id = %s
-                ORDER BY t.created_at DESC
-            ''', (session['user_id'],))
-        else:
-            cur.execute('''
-                SELECT t.id, t.title, t.unique_code, t.created_at, t.game_mode,
-                       (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
-                FROM tests t
-                WHERE t.created_by_user_id = ?
-                ORDER BY t.created_at DESC
-            ''', (session['user_id'],))
+        cur.execute('''
+            SELECT t.id, t.title, t.unique_code, t.created_at,
+                   (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
+            FROM tests t
+            WHERE t.created_by_user_id = %s
+            ORDER BY t.created_at DESC
+        ''', (session['user_id'],))
         
-        rows = cur.fetchall()
-        tests = []
-        for row in rows:
-            if USE_POSTGRES:
-                tests.append({
-                    'id': row[0],
-                    'title': row[1],
-                    'unique_code': row[2],
-                    'created_at': row[3],
-                    'game_mode': row[4],
-                    'attempts_count': row[5]
-                })
-            else:
-                tests.append(dict(row))
-        
+        tests = cur.fetchall()
+        cur.close()
         conn.close()
         
-        return jsonify(tests)
+        return jsonify([dict(t) for t in tests])
     
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_all_tests', methods=['GET'])
+def get_all_tests():
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT t.id, t.title, t.unique_code, t.created_at, u.username as creator_name,
+                   (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
+            FROM tests t
+            LEFT JOIN users u ON t.created_by_user_id = u.id
+            ORDER BY t.created_at DESC
+            LIMIT 10
+        ''')
+        
+        tests = cur.fetchall()
+        cur.close()
+        conn.close()
+        
+        return jsonify([dict(t) for t in tests])
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_test_for_edit/<int:test_id>', methods=['GET'])
+@login_required
+def get_test_for_edit(test_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT id, title, unique_code FROM tests 
+            WHERE id = %s AND created_by_user_id = %s
+        ''', (test_id, session['user_id']))
+        
+        test = cur.fetchone()
+        
+        if not test:
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'Тест не найден или у вас нет прав'}), 404
+        
+        cur.execute('''
+            SELECT id, question_text, question_type, options, correct_answer, points, order_index
+            FROM test_questions WHERE test_id = %s ORDER BY order_index
+        ''', (test_id,))
+        
+        questions = []
+        for row in cur.fetchall():
+            q = dict(row)
+            if q['options']:
+                try:
+                    q['options'] = json.loads(q['options'])
+                except:
+                    q['options'] = []
+            else:
+                q['options'] = []
+            questions.append(q)
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'test': dict(test),
+            'questions': questions
+        })
+    
+    except Exception as e:
+        print(f"Error: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/update_test/<int:test_id>', methods=['PUT'])
+@login_required
+def update_test(test_id):
+    try:
+        data = request.json
+        title = data.get('title')
+        questions = data.get('questions', [])
+        
+        if not title or not questions:
+            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
+        
+        conn = get_db()
+        cur = conn.cursor()
+        
+        cur.execute('''
+            SELECT id FROM tests WHERE id = %s AND created_by_user_id = %s AND is_editable = TRUE
+        ''', (test_id, session['user_id']))
+        
+        if not cur.fetchone():
+            cur.close()
+            conn.close()
+            return jsonify({'error': 'У вас нет прав на редактирование этого теста'}), 403
+        
+        cur.execute("UPDATE tests SET title = %s WHERE id = %s", (title, test_id))
+        cur.execute("DELETE FROM test_questions WHERE test_id = %s", (test_id,))
+        
+        for idx, q in enumerate(questions):
+            correct_ans = q.get('correct_answer')
+            points = q.get('points', 1)
+            options = q.get('options', [])
+            
+            cur.execute('''
+                INSERT INTO test_questions (test_id, question_text, question_type, 
+                                            options, order_index, correct_answer, points)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ''', (test_id, q.get('text'), q.get('type', 'text'), 
+                  json.dumps(options) if options else None, 
+                  idx, correct_ans, points))
+        
+        conn.commit()
+        cur.close()
+        conn.close()
+        
+        return jsonify({'success': True, 'message': 'Тест обновлен!'})
+    
+    except Exception as e:
+        print(f"Error updating test: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/get_test_results/<int:test_id>', methods=['GET'])
+@login_required
+def get_test_results(test_id):
+    try:
+        conn = get_db()
+        cur = conn.cursor()
+        
+        # Проверяем, что пользователь - создатель теста
+        cur.execute('''
+            SELECT created_by_user_id FROM tests WHERE id = %s
+        ''', (test_id,))
+        test = cur.fetchone()
+        
+        if not test:
+            return jsonify({'error': 'Тест не найден'}), 404
+            
+        if test['created_by_user_id'] != session['user_id'] and session.get('role') != 'admin':
+            return jsonify({'error': 'Нет прав для просмотра результатов'}), 403
+        
+        # Получаем результаты с ФИО студентов
+        cur.execute('''
+            SELECT 
+                tr.id,
+                tr.score,
+                tr.max_score,
+                tr.completed_at,
+                u.full_name,
+                u.username,
+                u.email,
+                ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage
+            FROM test_results tr
+            JOIN users u ON tr.user_id = u.id
+            WHERE tr.test_id = %s
+            ORDER BY tr.completed_at DESC
+        ''', (test_id,))
+        
+        results = cur.fetchall()
+        
+        # Статистика по тесту
+        cur.execute('''
+            SELECT 
+                COUNT(*) as total_attempts,
+                AVG(score * 100.0 / NULLIF(max_score, 0)) as avg_score,
+                MAX(score) as max_score
+            FROM test_results
+            WHERE test_id = %s
+        ''', (test_id,))
+        stats = cur.fetchone()
+        
+        # Информация о тесте
+        cur.execute('SELECT title FROM tests WHERE id = %s', (test_id,))
+        test_info = cur.fetchone()
+        
+        cur.close()
+        conn.close()
+        
+        return jsonify({
+            'success': True,
+            'test': {'title': test_info['title']},
+            'results': [dict(r) for r in results],
+            'stats': {
+                'total_attempts': stats['total_attempts'] or 0,
+                'avg_score': round(stats['avg_score'] or 0, 1),
+                'max_score': stats['max_score'] or 0
+            }
+        })
+        
     except Exception as e:
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
@@ -882,46 +800,17 @@ def my_results():
         conn = get_db()
         cur = conn.cursor()
         
-        if USE_POSTGRES:
-            cur.execute('''
-                SELECT tr.id, tr.score, tr.max_score, tr.completed_at,
-                       t.title, t.unique_code, t.game_mode,
-                       ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage,
-                       tr.game_session_id
-                FROM test_results tr
-                JOIN tests t ON tr.test_id = t.id
-                WHERE tr.user_id = %s
-                ORDER BY tr.completed_at DESC
-            ''', (session['user_id'],))
-        else:
-            cur.execute('''
-                SELECT tr.id, tr.score, tr.max_score, tr.completed_at,
-                       t.title, t.unique_code, t.game_mode,
-                       ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage,
-                       tr.game_session_id
-                FROM test_results tr
-                JOIN tests t ON tr.test_id = t.id
-                WHERE tr.user_id = ?
-                ORDER BY tr.completed_at DESC
-            ''', (session['user_id'],))
+        cur.execute('''
+            SELECT tr.id, tr.score, tr.max_score, tr.completed_at,
+                   t.title, t.unique_code,
+                   ROUND((tr.score * 100.0 / NULLIF(tr.max_score, 0)), 1) as percentage
+            FROM test_results tr
+            JOIN tests t ON tr.test_id = t.id
+            WHERE tr.user_id = %s
+            ORDER BY tr.completed_at DESC
+        ''', (session['user_id'],))
         
-        rows = cur.fetchall()
-        results = []
-        for row in rows:
-            if USE_POSTGRES:
-                results.append({
-                    'id': row[0],
-                    'score': row[1],
-                    'max_score': row[2],
-                    'completed_at': row[3],
-                    'title': row[4],
-                    'unique_code': row[5],
-                    'game_mode': row[6],
-                    'percentage': row[7],
-                    'game_session_id': row[8]
-                })
-            else:
-                results.append(dict(row))
+        results = cur.fetchall()
         
         avg_percentage = 0
         best_percentage = 0
@@ -930,10 +819,11 @@ def my_results():
             avg_percentage = sum(percentages) / len(percentages)
             best_percentage = max(percentages)
         
+        cur.close()
         conn.close()
         
         return jsonify({
-            'results': results,
+            'results': [dict(r) for r in results],
             'stats': {
                 'total_tests': len(results),
                 'avg_percentage': round(avg_percentage, 1),
@@ -945,15 +835,14 @@ def my_results():
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-# ===== SOCKET.IO СОБЫТИЯ (оставляем без изменений из предыдущей версии) =====
-# ... (весь код socketio событий остается таким же как в предыдущей версии)
-
 # Запуск
 if __name__ == '__main__':
     init_db()
-    
-    port = int(os.getenv('PORT', 3000))
     print("=" * 50)
-    print("🚀 Server starting...")
+    print("🚀 Server: http://localhost:3000")
+    print("📁 Database: PostgreSQL")
+    print("👨‍💼 Admin login: admin / admin123")
+    print("👨‍🏫 Teacher login: teacher / teacher123")
+    print("👨‍🎓 Student login: student / student123")
     print("=" * 50)
-    socketio.run(app, debug=False, port=port, host='0.0.0.0')
+    app.run(debug=False, port=3000, host='0.0.0.0')
