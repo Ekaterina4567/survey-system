@@ -367,9 +367,10 @@
 
         // ===== QR МОДАЛКА =====
         function showQRModal(title, qrBase64, code) {
-            const url = `${window.location.origin}/take_test?code=${code}`;
+            // Меняем ссылку с /take_test на /qr_redirect
+            const url = `${window.location.origin}/qr_redirect?code=${code}`;
             document.getElementById('qr-title').textContent = title;
-            document.getElementById('qr-image').src = qrBase64 ? `data:image/png;base64,${qrBase64}` : '';
+            document.getElementById('qr-image').src = `data:image/png;base64,${qrBase64}`;
             document.getElementById('qr-code-text').textContent = code;
             document.getElementById('qr-url').textContent = url;
             document.getElementById('qr-modal').style.display = 'flex';
