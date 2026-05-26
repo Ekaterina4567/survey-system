@@ -15,19 +15,84 @@ import time
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
-socketio = SocketIO(app, cors_allowed_origins="*")
+
+# Настройка для Render.com
+socketio = SocketIO(app, cors_allowed_origins="*", async_mode='threading')
 
 # Хранилище активных игр
 active_games = {}
 
-# Путь к базе данных
-DATABASE = 'survey.db'
+# Путь к базе данных - используем PostgreSQL на Render или SQLite как fallback
+import urllib.parse
+import psycopg2
 
 def get_db():
-    """Получение соединения с SQLite"""
+    """Получение соединения с БД - PostgreSQL или SQLite"""
+    database_url = os.getenv('DATABASE_URL')
+    
+    if database_url:
+        # Используем PostgreSQL
+        try:
+            conn = psycopg2.connect(database_url)
+            # Для доступа по имени колонки
+            class DictRow:
+                def __init__(self, cursor, row):
+                    self.cursor = cursor
+                    self.row = row
+                
+                def __getitem__(self, key):
+                    if isinstance(key, int):
+                        return self.row[key]
+                    try:
+                        idx = self.cursor.description.index([col for col in self.cursor.description if col.name == key][0])
+                        return self.row[idx]
+                    except (IndexError, ValueError):
+                        raise KeyError(key)
+                
+                def get(self, key, default=None):
+                    try:
+                        return self.__getitem__(key)
+                    except KeyError:
+                        return default
+            
+            # Обертка для поддержки row_factory
+            class CursorWrapper:
+                def __init__(self, cursor):
+                    self.cursor = cursor
+                    self.description = cursor.description
+                    self.row_factory = None
+                
+                def fetchone(self):
+                    row = self.cursor.fetchone()
+                    if row and self.row_factory:
+                        return DictRow(self, row)
+                    return row
+                
+                def fetchall(self):
+                    rows = self.cursor.fetchall()
+                    if rows and self.row_factory:
+                        return [DictRow(self, row) for row in rows]
+                    return rows
+                
+                def execute(self, query, params=None):
+                    self.cursor.execute(query, params or ())
+                    return self
+                
+                def __getattr__(self, name):
+                    return getattr(self.cursor, name)
+            
+            conn.cursor = lambda: CursorWrapper(conn.cursor())
+            return conn
+        except Exception as e:
+            print(f"PostgreSQL connection error: {e}, falling back to SQLite")
+    
+    # Fallback на SQLite
     conn = sqlite3.connect(DATABASE)
     conn.row_factory = sqlite3.Row
     return conn
+
+# Путь к базе данных SQLite (для локальной разработки)
+DATABASE = 'survey.db'
 
 def init_db():
     """Инициализация базы данных"""
@@ -37,7 +102,7 @@ def init_db():
     # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
@@ -52,7 +117,7 @@ def init_db():
     # Таблица тестов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tests (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             title TEXT NOT NULL,
             unique_code TEXT UNIQUE NOT NULL,
             created_by_user_id INTEGER,
@@ -67,7 +132,7 @@ def init_db():
     # Таблица вопросов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_questions (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             test_id INTEGER NOT NULL,
             question_text TEXT NOT NULL,
             question_type TEXT DEFAULT 'choice',
@@ -82,7 +147,7 @@ def init_db():
     # Таблица результатов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_results (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             test_id INTEGER NOT NULL,
             user_id INTEGER NOT NULL,
             score INTEGER DEFAULT 0,
@@ -98,7 +163,7 @@ def init_db():
     # Таблица детальных ответов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_answers_detail (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            id SERIAL PRIMARY KEY,
             result_id INTEGER NOT NULL,
             question_id INTEGER NOT NULL,
             user_answer TEXT,
@@ -110,35 +175,31 @@ def init_db():
         )
     ''')
     
-    # Индексы
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_tests_code ON tests(unique_code)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_results_user ON test_results(user_id)')
-    
     # Создаём тестовых пользователей
     admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-        SELECT 'admin', 'admin@survey.com', ?, 'admin123', 'admin', 'Администратор', 1
+        SELECT 'admin', 'admin@survey.com', %s, 'admin123', 'admin', 'Администратор', 1
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
     ''', (admin_hash,))
     
     teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-        SELECT 'teacher', 'teacher@survey.com', ?, 'teacher123', 'teacher', 'Преподаватель', 1
+        SELECT 'teacher', 'teacher@survey.com', %s, 'teacher123', 'teacher', 'Преподаватель', 1
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
     ''', (teacher_hash,))
     
     student_hash = hashlib.sha256("student123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
-        SELECT 'student', 'student@survey.com', ?, 'student123', 'student', 'Студент', 1
+        SELECT 'student', 'student@survey.com', %s, 'student123', 'student', 'Студент', 1
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'student')
     ''', (student_hash,))
     
     conn.commit()
     conn.close()
-    print("✅ SQLite база данных инициализирована!")
+    print("✅ База данных инициализирована!")
 
 def login_required(f):
     @wraps(f)
@@ -153,7 +214,7 @@ def generate_unique_code():
         code = secrets.token_urlsafe(6).upper().replace('-', 'X').replace('_', 'Y')
         conn = get_db()
         cur = conn.cursor()
-        cur.execute("SELECT id FROM tests WHERE unique_code = ?", (code,))
+        cur.execute("SELECT id FROM tests WHERE unique_code = %s", (code,))
         result = cur.fetchone()
         conn.close()
         if not result:
@@ -236,7 +297,7 @@ def result_detail(result_id):
         return redirect(url_for('login_page'))
     return render_template('result_detail.html', result_id=result_id, user=session)
 
-# ===== API =====
+# ===== API МАРШРУТЫ =====
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -254,7 +315,7 @@ def register():
         conn = get_db()
         cur = conn.cursor()
         
-        cur.execute("SELECT id FROM users WHERE username = ? OR email = ?", (username, email))
+        cur.execute("SELECT id FROM users WHERE username = %s OR email = %s", (username, email))
         if cur.fetchone():
             conn.close()
             return jsonify({'error': 'Пользователь уже существует!'}), 400
@@ -262,10 +323,10 @@ def register():
         password_hash = hash_password(password)
         cur.execute('''
             INSERT INTO users (username, email, password_hash, role, full_name, is_active, plain_password)
-            VALUES (?, ?, ?, ?, ?, 1, ?) RETURNING id
+            VALUES (%s, %s, %s, %s, %s, 1, %s) RETURNING id
         ''', (username, email, password_hash, role, full_name, password))
         
-        user_id = cur.lastrowid
+        user_id = cur.fetchone()[0] if hasattr(cur.fetchone(), '__getitem__') else cur.lastrowid
         conn.commit()
         conn.close()
         
@@ -288,7 +349,7 @@ def login():
         password_hash = hash_password(password)
         cur.execute('''
             SELECT * FROM users 
-            WHERE (username = ? OR email = ?) AND password_hash = ? AND is_active = 1
+            WHERE (username = %s OR email = %s) AND password_hash = %s AND is_active = 1
         ''', (username, username, password_hash))
         
         user = cur.fetchone()
@@ -343,10 +404,10 @@ def create_test():
         
         cur.execute('''
             INSERT INTO tests (title, unique_code, created_by_user_id, created_at, is_editable, game_mode, time_per_question)
-            VALUES (?, ?, ?, CURRENT_TIMESTAMP, 1, ?, ?) RETURNING id
+            VALUES (%s, %s, %s, CURRENT_TIMESTAMP, 1, %s, %s) RETURNING id
         ''', (title, code, session['user_id'], game_mode, time_per_question))
         
-        test_id = cur.lastrowid
+        test_id = cur.fetchone()[0] if hasattr(cur.fetchone(), '__getitem__') else cur.lastrowid
         
         for idx, q in enumerate(questions):
             correct_ans = q.get('correct_answer')
@@ -356,7 +417,7 @@ def create_test():
             cur.execute('''
                 INSERT INTO test_questions (test_id, question_text, question_type, 
                                             options, order_index, correct_answer, points)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
             ''', (test_id, q.get('text'), q.get('type', 'text'), 
                   json.dumps(options) if options else None, 
                   idx, correct_ans, points))
@@ -370,7 +431,7 @@ def create_test():
         qr_img.save(buffered, format="PNG")
         qr_base64 = base64.b64encode(buffered.getvalue()).decode()
         
-        # Также создаем QR для игрового режима
+        # QR для игрового режима
         game_qr_data = f"{request.host_url}game_player/{code}"
         game_qr_img = qrcode.make(game_qr_data)
         game_buffered = io.BytesIO()
@@ -406,7 +467,7 @@ def get_test_by_code():
         
         cur.execute('''
             SELECT id, title, unique_code, created_by_user_id, game_mode, time_per_question
-            FROM tests WHERE unique_code = ?
+            FROM tests WHERE unique_code = %s
         ''', (code.upper(),))
         
         test = cur.fetchone()
@@ -417,7 +478,7 @@ def get_test_by_code():
         
         cur.execute('''
             SELECT id, question_text, question_type, options, correct_answer, points, order_index
-            FROM test_questions WHERE test_id = ? ORDER BY order_index
+            FROM test_questions WHERE test_id = %s ORDER BY order_index
         ''', (test['id'],))
         
         questions = cur.fetchall()
@@ -470,7 +531,7 @@ def submit_test():
         
         cur.execute('''
             SELECT id, correct_answer, question_type, points, question_text
-            FROM test_questions WHERE test_id = ?
+            FROM test_questions WHERE test_id = %s
         ''', (test_id,))
         
         questions = cur.fetchall()
@@ -501,15 +562,15 @@ def submit_test():
         
         cur.execute('''
             INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json, game_session_id)
-            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP, ?, ?) RETURNING id
+            VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s, %s) RETURNING id
         ''', (test_id, session['user_id'], total_score, max_possible_score, json.dumps(detailed_results, ensure_ascii=False), game_session_id))
         
-        result_id = cur.lastrowid
+        result_id = cur.fetchone()[0] if hasattr(cur.fetchone(), '__getitem__') else cur.lastrowid
         
         for detail in detailed_results:
             cur.execute('''
                 INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
-                VALUES (?, ?, ?, ?, ?)
+                VALUES (%s, %s, %s, %s, %s)
             ''', (result_id, detail['question_id'], detail['user_answer'], 1 if detail['is_correct'] else 0, detail['points_earned']))
         
         conn.commit()
@@ -542,7 +603,7 @@ def get_my_results_detail(result_id):
             SELECT tr.id, tr.score, tr.max_score, tr.completed_at, t.title, tr.answers_json
             FROM test_results tr
             JOIN tests t ON tr.test_id = t.id
-            WHERE tr.id = ? AND tr.user_id = ?
+            WHERE tr.id = %s AND tr.user_id = %s
         ''', (result_id, session['user_id']))
         
         result = cur.fetchone()
@@ -555,7 +616,7 @@ def get_my_results_detail(result_id):
             SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
             FROM test_answers_detail tad
             JOIN test_questions tq ON tad.question_id = tq.id
-            WHERE tad.result_id = ?
+            WHERE tad.result_id = %s
         ''', (result_id,))
         
         details = [dict(row) for row in cur.fetchall()]
@@ -583,7 +644,7 @@ def get_my_tests():
             SELECT t.id, t.title, t.unique_code, t.created_at, t.game_mode,
                    (SELECT COUNT(*) FROM test_results WHERE test_id = t.id) as attempts_count
             FROM tests t
-            WHERE t.created_by_user_id = ?
+            WHERE t.created_by_user_id = %s
             ORDER BY t.created_at DESC
         ''', (session['user_id'],))
         
@@ -610,7 +671,7 @@ def my_results():
                    tr.game_session_id
             FROM test_results tr
             JOIN tests t ON tr.test_id = t.id
-            WHERE tr.user_id = ?
+            WHERE tr.user_id = %s
             ORDER BY tr.completed_at DESC
         ''', (session['user_id'],))
         
@@ -638,16 +699,14 @@ def my_results():
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-# ===== SOCKET.IO События для игры =====
+# ===== SOCKET.IO СОБЫТИЯ =====
 
 @socketio.on('join_game_host')
 def handle_join_game_host(data):
-    """Ведущий подключается к игре"""
     game_code = data.get('game_code')
     if game_code:
         join_room(game_code)
         
-        # Инициализируем игру
         if game_code not in active_games:
             active_games[game_code] = {
                 'players': {},
@@ -664,7 +723,6 @@ def handle_join_game_host(data):
 
 @socketio.on('join_game_player')
 def handle_join_game_player(data):
-    """Игрок подключается к игре"""
     game_code = data.get('game_code')
     user_id = data.get('user_id')
     username = data.get('username')
@@ -672,7 +730,6 @@ def handle_join_game_player(data):
     if game_code and game_code in active_games:
         join_room(game_code)
         
-        # Добавляем игрока
         if user_id not in active_games[game_code]['players']:
             active_games[game_code]['players'][user_id] = {
                 'username': username,
@@ -684,7 +741,6 @@ def handle_join_game_player(data):
         
         active_games[game_code]['players'][user_id]['sid'] = request.sid
         
-        # Обновляем всех игроков
         players_list = [
             {'username': p['username'], 'user_id': p['user_id']} 
             for p in active_games[game_code]['players'].values()
@@ -693,7 +749,6 @@ def handle_join_game_player(data):
         emit('players_update', {'players': players_list}, room=game_code)
         emit('player_joined', {'username': username, 'count': len(players_list)}, room=game_code)
         
-        # Если игра уже идет, отправляем текущий вопрос
         game = active_games[game_code]
         if game['is_active'] and game['current_question'] >= 0:
             emit('question_start', {
@@ -704,7 +759,6 @@ def handle_join_game_player(data):
 
 @socketio.on('start_game')
 def handle_start_game(data):
-    """Ведущий начинает игру"""
     game_code = data.get('game_code')
     questions = data.get('questions', [])
     time_per_question = data.get('time_per_question', 10)
@@ -719,7 +773,6 @@ def handle_start_game(data):
         
         emit('game_started', {'total_questions': len(questions)}, room=game_code)
         
-        # Запускаем первый вопрос через 3 секунды
         def start_first_question():
             socketio.emit('next_question', room=game_code)
         
@@ -727,10 +780,8 @@ def handle_start_game(data):
 
 @socketio.on('next_question')
 def handle_next_question(data=None):
-    """Переход к следующему вопросу"""
     game_code = data.get('game_code') if data else None
     
-    # Ищем game_code из комнаты
     if not game_code:
         for room, game in active_games.items():
             if request.sid == game.get('host_sid'):
@@ -746,7 +797,6 @@ def handle_next_question(data=None):
             game['question_start_time'] = time.time()
             game['question_results'] = {}
             
-            # Отправляем вопрос всем игрокам
             emit('question_start', {
                 'question_index': game['current_question'],
                 'question': {
@@ -758,21 +808,17 @@ def handle_next_question(data=None):
                 'time_left': game['time_per_question']
             }, room=game_code)
             
-            # Запускаем таймер на ответы
             def end_question():
                 if game_code in active_games:
                     socketio.emit('time_up', room=game_code)
-                    # Ждем 2 секунды и переходим к результатам
                     threading.Timer(2, lambda: show_question_results(game_code)).start()
             
             threading.Timer(game['time_per_question'], end_question).start()
         else:
-            # Игра закончена
             end_game(game_code)
 
 @socketio.on('submit_answer')
 def handle_submit_answer(data):
-    """Игрок отправляет ответ"""
     game_code = data.get('game_code')
     user_id = data.get('user_id')
     question_index = data.get('question_index')
@@ -781,21 +827,18 @@ def handle_submit_answer(data):
     if game_code in active_games:
         game = active_games[game_code]
         
-        # Проверяем, не истекло ли время
         if game['question_start_time']:
             time_elapsed = time.time() - game['question_start_time']
             if time_elapsed > game['time_per_question']:
                 emit('answer_timeout', {'message': 'Время вышло!'}, room=request.sid)
                 return
         
-        # Проверяем правильность ответа
         if question_index < len(game['questions']):
             question = game['questions'][question_index]
             correct_answer = question.get('correct_answer', '')
             is_correct = check_answer(question.get('type'), answer, correct_answer)
             points_earned = question.get('points', 1) if is_correct else 0
             
-            # Сохраняем ответ
             if user_id in game['players']:
                 game['players'][user_id]['answers'][question_index] = {
                     'answer': answer,
@@ -804,7 +847,6 @@ def handle_submit_answer(data):
                 }
                 game['players'][user_id]['score'] += points_earned
             
-            # Сохраняем результат вопроса
             if question_index not in game['question_results']:
                 game['question_results'][question_index] = {
                     'total': 0,
@@ -824,7 +866,6 @@ def handle_submit_answer(data):
             emit('answer_received', {'success': True}, room=request.sid)
 
 def show_question_results(game_code):
-    """Показывает результаты вопроса всем игрокам и ведущему"""
     if game_code in active_games:
         game = active_games[game_code]
         current_q = game['current_question']
@@ -832,14 +873,12 @@ def show_question_results(game_code):
         if current_q in game['question_results']:
             results = game['question_results'][current_q]
             
-            # Отправляем статистику всем
             emit('question_results', {
                 'total_players': results['total'],
                 'correct_count': results['correct'],
                 'percentage': round(results['correct'] / results['total'] * 100, 1) if results['total'] > 0 else 0
             }, room=game_code)
             
-            # Отправляем каждому игроку его результат
             for user_id, player in game['players'].items():
                 if current_q in player['answers']:
                     answer_data = player['answers'][current_q]
@@ -849,7 +888,6 @@ def show_question_results(game_code):
                         'total_score': player['score']
                     }, room=player.get('sid'))
             
-            # Через 3 секунды переходим к следующему вопросу
             def next():
                 if game_code in active_games and game['is_active']:
                     socketio.emit('next_question', room=game_code)
@@ -857,12 +895,10 @@ def show_question_results(game_code):
             threading.Timer(3, next).start()
 
 def end_game(game_code):
-    """Завершает игру и показывает финальные результаты"""
     if game_code in active_games:
         game = active_games[game_code]
         game['is_active'] = False
         
-        # Собираем финальную статистику
         final_results = []
         for user_id, player in game['players'].items():
             final_results.append({
@@ -872,7 +908,6 @@ def end_game(game_code):
                 'correct_answers': sum(1 for a in player['answers'].values() if a['is_correct'])
             })
         
-        # Сортируем по очкам
         final_results.sort(key=lambda x: x['score'], reverse=True)
         
         emit('game_ended', {
@@ -880,7 +915,6 @@ def end_game(game_code):
             'top_player': final_results[0] if final_results else None
         }, room=game_code)
         
-        # Удаляем игру через минуту
         def cleanup():
             if game_code in active_games:
                 del active_games[game_code]
@@ -896,15 +930,12 @@ def handle_leave_game(data):
         del active_games[game_code]['players'][user_id]
         emit('player_left', {'user_id': user_id}, room=game_code)
 
-# Запуск
+# Запуск для Render.com
 if __name__ == '__main__':
     init_db()
     
+    port = int(os.getenv('PORT', 3000))
     print("=" * 50)
-    print("🚀 Server: http://localhost:3000")
-    print("📁 Database: SQLite (survey.db)")
-    print("👨‍💼 Admin login: admin / admin123")
-    print("👨‍🏫 Teacher login: teacher / teacher123")
-    print("👨‍🎓 Student login: student / student123")
+    print("🚀 Server starting...")
     print("=" * 50)
-    socketio.run(app, debug=True, port=3000, host='0.0.0.0', allow_unsafe_werkzeug=True)
+    socketio.run(app, debug=False, port=port, host='0.0.0.0')
