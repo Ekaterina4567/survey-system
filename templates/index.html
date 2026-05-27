@@ -8,9 +8,11 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
+    <!-- НАВИГАЦИЯ С ЛОГОТИПОМ И НАЗВАНИЕМ -->
     <nav class="navbar">
         <a href="/" class="logo-link">
-            <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img">
+            <!-- Место для вашего PNG логотипа -->
+            <img src="/static/logo.png" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
             <span class="logo-text">SurveySystem</span>
         </a>
         <div class="nav-links" id="nav-links">
@@ -20,92 +22,456 @@
         </div>
     </nav>
 
-    <div class="hero-section">
-        <div class="hero-content">
-            <h1>Система <span class="highlight">онлайн тестирования</span></h1>
-            <p>Создавайте тесты, проходите их и получайте результаты. Вся статистика сохраняется в вашем личном кабинете.</p>
+    <!-- HERO СЕКЦИЯ -->
+    <main class="hero-wrapper">
+        <!-- ЛЕВАЯ ЧАСТЬ: Текст -->
+        <div class="hero-content fade-in">
+            <div class="badge">✨ Онлайн-тестирование</div>
+            <h1>Создавайте тесты <br>и <span class="highlight">получайте знания</span></h1>
+            <p>
+                Создавайте интерактивные опросы, проходите тесты и получайте мгновенные результаты. 
+                Вся статистика сохраняется в вашем личном кабинете.
+            </p>
             <div class="hero-buttons">
                 <a href="/take_test" class="btn btn-primary">📝 Пройти тест</a>
-                <a href="/create_test_page" class="btn btn-secondary">✨ Создать тест</a>
+                <a href="/create_test_page" class="btn btn-outline">✨ Создать тест</a>
+            </div>
+            
+            <!-- Мини-статистика под текстом -->
+            <div class="hero-stats">
+                <div class="h-stat">
+                    <strong>150+</strong>
+                    <span>Тестов</span>
+                </div>
+                <div class="h-stat">
+                    <strong>2k+</strong>
+                    <span>Студентов</span>
+                </div>
             </div>
         </div>
-        <div class="hero-illustration">
-            <div class="illustration-box">
-                <img src="/static/Logo.svg" alt="Logo" style="width: 80px; height: 80px;">
-                <div style="font-weight: 600; color: #3D2B1F; margin-top: 0.5rem;">Тест-система</div>
-                <div style="font-size: 0.8rem; color: #7A6B5D;">Сохраняйте результаты</div>
-            </div>
-        </div>
-    </div>
 
-    <div class="features-section">
+        <!-- ПРАВАЯ ЧАСТЬ: Иллюстрация -->
+        <div class="hero-visual fade-in">
+            <div class="big-moon"></div>
+            <div class="float-card card-1">
+                <div class="card-line"></div>
+                <div class="card-check">✓</div>
+            </div>
+            <div class="float-card card-2">
+                <div class="card-line short"></div>
+                <div class="card-circle"></div>
+            </div>
+            <div class="float-card card-3">
+                <div class="card-line"></div>
+                <div class="card-line short"></div>
+            </div>
+            <div class="dot dot-1"></div>
+            <div class="dot dot-2"></div>
+            <div class="dot dot-3"></div>
+        </div>
+    </main>
+
+    <!-- БЛОК ПРЕИМУЩЕСТВ -->
+    <section class="features-section">
         <div class="feature-card">
-            <div class="feature-icon">📝</div>
+            <div class="feature-icon">🎓</div>
             <h3>Для студентов</h3>
-            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется в личном кабинете.</p>
+            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">👨‍💼</div>
+            <div class="feature-icon">👨‍🏫</div>
             <h3>Для преподавателей</h3>
-            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты каждого студента.</p>
+            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты.</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">📊</div>
             <h3>Статистика</h3>
             <p>Детальная аналитика: средний балл, лучшие результаты, прогресс каждого студента.</p>
         </div>
-    </div>
+    </section>
 
+    <!-- НИЖНЯЯ СТАТИСТИКА -->
     <div class="stats-banner">
         <div class="stat-item">
-            <div class="stat-number" id="active-tests">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Всего тестов</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="total-attempts">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Пройдено тестов</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="total-users">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Студентов</div>
         </div>
     </div>
 
-    <script>
-        async function loadStats() {
-            try {
-                const response = await fetch('/api/get_all_tests');
-                if (response.ok) {
-                    const tests = await response.json();
-                    const statsDiv = document.getElementById('active-tests');
-                    if (statsDiv) {
-                        statsDiv.textContent = tests.length;
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading stats:', error);
+    <style>
+        /* Дополнительные стили для навигации с логотипом */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: var(--bg-white);
+            padding: 0.8rem 2.5rem;
+            border-bottom: 1px solid var(--border-light);
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: var(--shadow-sm);
+        }
+
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .logo-link:hover {
+            opacity: 0.85;
+        }
+
+        .logo-img {
+            height: 40px;
+            width: auto;
+            display: block;
+            object-fit: contain;
+        }
+
+        .logo-text {
+            font-size: 1.4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        /* Hero-секция */
+        .hero-wrapper {
+            display: grid;
+            grid-template-columns: 1fr 0.9fr;
+            gap: 2rem;
+            max-width: 1400px;
+            margin: 2rem auto;
+            padding: 0 2rem;
+            align-items: center;
+        }
+
+        .hero-content h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            line-height: 1.2;
+            margin: 1rem 0;
+            color: var(--text-primary);
+        }
+
+        .hero-content .highlight {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .hero-content p {
+            font-size: 1rem;
+            color: var(--text-secondary);
+            margin-bottom: 2rem;
+        }
+
+        .badge {
+            display: inline-block;
+            background: var(--primary-soft);
+            padding: 0.3rem 0.8rem;
+            border-radius: 40px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            color: var(--primary);
+        }
+
+        .hero-buttons {
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .hero-stats {
+            display: flex;
+            gap: 2rem;
+            margin-top: 2rem;
+        }
+
+        .h-stat strong {
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--primary);
+            display: block;
+        }
+
+        .h-stat span {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Правая иллюстрация */
+        .hero-visual {
+            position: relative;
+            min-height: 400px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .big-moon {
+            width: 280px;
+            height: 280px;
+            background: radial-gradient(circle at 30% 30%, #F5EDE3, #E8D5B7);
+            border-radius: 50%;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            position: relative;
+        }
+
+        .float-card {
+            position: absolute;
+            background: white;
+            border-radius: 16px;
+            padding: 12px 16px;
+            box-shadow: 0 8px 20px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 8px;
+            align-items: center;
+        }
+
+        .card-1 {
+            top: 20%;
+            left: 0;
+        }
+
+        .card-2 {
+            bottom: 25%;
+            right: 5%;
+        }
+
+        .card-3 {
+            bottom: 40%;
+            left: 15%;
+        }
+
+        .card-line {
+            width: 40px;
+            height: 6px;
+            background: var(--primary-light);
+            border-radius: 4px;
+        }
+
+        .card-line.short {
+            width: 20px;
+        }
+
+        .card-check {
+            width: 24px;
+            height: 24px;
+            background: var(--success);
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+        }
+
+        .card-circle {
+            width: 24px;
+            height: 24px;
+            border: 2px solid var(--primary);
+            border-radius: 50%;
+        }
+
+        .dot {
+            position: absolute;
+            background: var(--primary-light);
+            border-radius: 50%;
+        }
+
+        .dot-1 {
+            width: 8px;
+            height: 8px;
+            top: 15%;
+            right: 20%;
+        }
+
+        .dot-2 {
+            width: 12px;
+            height: 12px;
+            bottom: 20%;
+            left: 30%;
+        }
+
+        .dot-3 {
+            width: 6px;
+            height: 6px;
+            top: 60%;
+            right: 25%;
+        }
+
+        /* Features */
+        .features-section {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 1200px;
+            margin: 3rem auto;
+            padding: 0 2rem;
+        }
+
+        .feature-card {
+            background: var(--bg-card);
+            padding: 2rem;
+            border-radius: var(--radius-lg);
+            text-align: center;
+            border: 1px solid var(--border-card);
+            transition: all 0.2s;
+        }
+
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-md);
+        }
+
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .feature-card h3 {
+            font-size: 1.2rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .feature-card p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+        }
+
+        /* Stats banner */
+        .stats-banner {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2rem;
+            max-width: 1000px;
+            margin: 2rem auto;
+            padding: 2rem;
+            background: var(--primary-soft);
+            border-radius: var(--radius-xl);
+            text-align: center;
+        }
+
+        .stat-number {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--primary);
+        }
+
+        .stat-label {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Анимации */
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .fade-in {
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        /* Мобильная адаптация */
+        @media (max-width: 900px) {
+            .hero-wrapper {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+
+            .hero-content h1 {
+                font-size: 2.2rem;
+            }
+
+            .hero-stats {
+                justify-content: center;
+            }
+
+            .hero-visual {
+                min-height: 300px;
+            }
+
+            .big-moon {
+                width: 200px;
+                height: 200px;
+            }
+
+            .features-section {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .stats-banner {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+
+            .navbar {
+                padding: 0.8rem 1rem;
+            }
+
+            .logo-img {
+                height: 32px;
+            }
+
+            .logo-text {
+                font-size: 1.1rem;
             }
         }
-        loadStats();
-        
-        fetch('/check_auth')
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
+    </style>
+
+    <script>
+        // Динамическая загрузка навигации (опционально)
+        async function loadNav() {
+            try {
+                const response = await fetch('/check_auth');
+                const data = await response.json();
                 const navLinks = document.getElementById('nav-links');
-                if (data.authenticated && navLinks) {
-                    if (data.role === 'admin') {
-                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/admin">Админ панель</a><a href="#" onclick="logout()">Выход</a>';
-                    } else {
-                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/student_dashboard">Мои результаты</a><a href="/take_test">Пройти тест</a><a href="/create_test_page">Создать тест</a><a href="#" onclick="logout()">Выход</a>';
-                    }
+                
+                if (data.authenticated) {
+                    navLinks.innerHTML = `
+                        <a href="/">Главная</a>
+                        <a href="/student_dashboard">Мои результаты</a>
+                        <a href="/take_test">Пройти тест</a>
+                        <a href="/create_test_page">Создать тест</a>
+                        <a href="#" onclick="logout()">Выход</a>
+                    `;
+                } else {
+                    navLinks.innerHTML = `
+                        <a href="/" class="active">Главная</a>
+                        <a href="/login_page">Вход</a>
+                        <a href="/register_page">Регистрация</a>
+                    `;
                 }
-            })
-            .catch(function(error) { console.error('Auth check error:', error); });
-            
+            } catch (error) {
+                console.error('Error loading navigation:', error);
+            }
+        }
+
         async function logout() {
             await fetch('/logout');
             window.location.href = '/';
         }
+
+        loadNav();
     </script>
 </body>
 </html>
