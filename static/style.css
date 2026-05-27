@@ -36,7 +36,32 @@
     --radius-xl: 28px;
     --radius-full: 9999px;
 }
+/* Логотип в навигации - исправленный */
+.logo-link {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    text-decoration: none;
+}
 
+.logo-img {
+    height: 45px;
+    width: auto;
+    transition: transform 0.2s ease;
+}
+
+.logo-img:hover {
+    transform: scale(1.05);
+}
+
+.logo-text {
+    font-size: 1.4rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+}
 * {
     margin: 0;
     padding: 0;
