@@ -45,47 +45,58 @@
     </div>
 
     <script>
-        async function login(e) {
-            e.preventDefault();
-            const msgDiv = document.getElementById('message');
+        
+       async function login(e) {
+    e.preventDefault();
+    const msgDiv = document.getElementById('message');
+    
+    const username = document.getElementById('username').value.trim();
+    const password = document.getElementById('password').value;
+    
+    if (!username || !password) {
+        msgDiv.className = 'message error';
+        msgDiv.textContent = 'Заполните все поля';
+        msgDiv.style.display = 'block';
+        return;
+    }
+    
+    try {
+        const response = await fetch('/login', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: username, password: password })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            msgDiv.className = 'message success';
+            msgDiv.textContent = data.message;
+            msgDiv.style.display = 'block';
             
-            const username = document.getElementById('username').value.trim();
-            const password = document.getElementById('password').value;
+            // Проверяем параметры редиректа из URL
+            const urlParams = new URLSearchParams(window.location.search);
+            const redirectPage = urlParams.get('redirect');
+            const testCode = urlParams.get('code');
             
-            if (!username || !password) {
-                msgDiv.className = 'message error';
-                msgDiv.textContent = 'Заполните все поля';
-                msgDiv.style.display = 'block';
-                return;
-            }
-            
-            try {
-                const response = await fetch('/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username: username, password: password })
-                });
-                
-                const data = await response.json();
-                
-                if (data.success) {
-                    msgDiv.className = 'message success';
-                    msgDiv.textContent = data.message;
-                    msgDiv.style.display = 'block';
-                    setTimeout(() => {
-                        window.location.href = data.redirect || '/';
-                    }, 1000);
+            setTimeout(() => {
+                if (redirectPage && testCode) {
+                    window.location.href = `/${redirectPage}?code=${testCode}`;
                 } else {
-                    msgDiv.className = 'message error';
-                    msgDiv.textContent = data.error || 'Ошибка входа';
-                    msgDiv.style.display = 'block';
+                    window.location.href = data.redirect || '/';
                 }
-            } catch (error) {
-                msgDiv.className = 'message error';
-                msgDiv.textContent = 'Ошибка подключения к серверу';
-                msgDiv.style.display = 'block';
-            }
+            }, 1000);
+        } else {
+            msgDiv.className = 'message error';
+            msgDiv.textContent = data.error || 'Ошибка входа';
+            msgDiv.style.display = 'block';
         }
+    } catch (error) {
+        msgDiv.className = 'message error';
+        msgDiv.textContent = 'Ошибка подключения к серверу';
+        msgDiv.style.display = 'block';
+    }
+}
     </script>
 </body>
 </html>

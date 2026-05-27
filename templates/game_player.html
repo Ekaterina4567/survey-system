@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Игровой тест - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        .game-container {
+            max-width: 700px;
+            margin: 2rem auto;
+        }
+        .waiting-screen {
+            text-align: center;
+            padding: 3rem;
+            background: white;
+            border-radius: 20px;
+        }
+        .timer-circle {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 0 auto 1rem;
+            font-size: 2rem;
+            font-weight: 800;
+            color: white;
+        }
+        .option-btn {
+            display: block;
+            width: 100%;
+            padding: 1rem;
+            margin-bottom: 0.75rem;
+            background: #F5EDE3;
+            border: 1px solid #EDE3D8;
+            border-radius: 10px;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.2s;
+        }
+        .option-btn:hover:not(:disabled) {
+            background: #E8D5B7;
+            transform: translateX(5px);
+        }
+        .option-btn.selected {
+            background: #8B5E3C;
+            color: white;
+        }
+        .option-btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+        .result-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 1000;
+        }
+        .result-card {
+            background: white;
+            border-radius: 20px;
+            padding: 2rem;
+            text-align: center;
+        }
+        .result-correct { color: #2E7D32; font-size: 4rem; }
+        .result-wrong { color: #C62828; font-size: 4rem; }
+        .score-board {
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
+            color: white;
+            padding: 1rem;
+            border-radius: 10px;
+            text-align: center;
+            margin-bottom: 1rem;
+        }
+        .score-board span { font-size: 1.5rem; font-weight: 800; }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🎮 SurveySystem Game</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/student_dashboard">Мои результаты</a>
+            <a href="#" onclick="logout()">Выход</a>
+        </div>
+    </nav>
+
+    <div class="game-container">
+        <div id="waiting-screen" class="waiting-screen">
+            <div style="font-size: 3rem;">🎮</div>
+            <h2>Ожидание начала игры...</h2>
+            <p>Код игры: <strong id="game-code"></strong></p>
+            <div id="players-count">Игроков: <span id="player-count">1</span></div>
+            <div class="score-board" style="margin-top: 1rem;">
+                Ваши очки: <span id="total-score">0</span>
+            </div>
+        </div>
+
+        <div id="question-screen" style="display: none;">
+            <div class="score-board">
+                Ваши очки: <span id="game-score">0</span>
+            </div>
+            <div class="timer-circle" id="timer">0</div>
+            <div id="question-text" style="font-size: 1.2rem; font-weight: 600; margin-bottom: 1.5rem; text-align: center;"></div>
+            <div id="options-container"></div>
+            <button id="submit-text-btn" class="btn btn-primary" onclick="submitTextAnswer()" style="display: none; width: 100%;">✅ Ответить</button>
+        </div>
+    </div>
+
+    <script>
+        const code = window.location.pathname.split('/').pop();
+        let socket = null;
+        let currentQuestion = null;
+        let currentQuestionIndex = -1;
+        let selectedAnswer = null;
+        let currentScore = 0;
+
+        document.getElementById('game-code').innerText = code;
+
+        let userId = null;
+        let username = null;
+
+        async function getUserInfo() {
+            try {
+                const response = await fetch('/check_auth');
+                const data = await response.json();
+                if (data.authenticated) {
+                    username = data.username;
+                    userId = data.username;
+                } else {
+                    window.location.href = '/login_page';
+                }
+            } catch (error) {
+                console.error('Error:', error);
+            }
+        }
+
+        socket = io();
+
+        socket.on('connect', () => {
+            socket.emit('join_game_player', {
+                game_code: code,
+                user_id: userId,
+                username: username
+            });
+        });
+
+        socket.on('players_update', (data) => {
+            document.getElementById('player-count').innerText = data.players.length;
+        });
+
+        socket.on('game_started', () => {
+            document.getElementById('waiting-screen').style.display = 'none';
+            document.getElementById('question-screen').style.display = 'block';
+        });
+
+        socket.on('question_start', (data) => {
+            currentQuestionIndex = data.question_index;
+            currentQuestion = data.question;
+            displayQuestion(data.question);
+            startTimer(data.time_left);
+        });
+
+        socket.on('player_question_result', (data) => {
+            currentScore = data.total_score;
+            document.getElementById('game-score').innerText = currentScore;
+            document.getElementById('total-score').innerText = currentScore;
+            showQuestionResult(data.is_correct, data.points_earned);
+        });
+
+        function displayQuestion(question) {
+            document.getElementById('question-text').innerHTML = question.text;
+            selectedAnswer = null;
+            
+            const container = document.getElementById('options-container');
+            
+            if (question.type === 'choice') {
+                container.innerHTML = question.options.map(opt => `
+                    <button class="option-btn" onclick="selectAnswer('${escapeHtml(opt).replace(/'/g, "\\'")}')">
+                        ${escapeHtml(opt)}
+                    </button>
+                `).join('');
+                document.getElementById('submit-text-btn').style.display = 'none';
+            } else if (question.type === 'checkbox') {
+                container.innerHTML = question.options.map(opt => `
+                    <label class="option-btn" style="display: flex; align-items: center; gap: 0.5rem;">
+                        <input type="checkbox" value="${escapeHtml(opt).replace(/'/g, "\\'")}" onchange="updateCheckboxSelection()">
+                        <span>${escapeHtml(opt)}</span>
+                    </label>
+                `).join('');
+                document.getElementById('submit-text-btn').style.display = 'block';
+            } else {
+                container.innerHTML = `<textarea id="text-answer" class="text-answer" rows="3" placeholder="Введите ваш ответ..."></textarea>`;
+                document.getElementById('submit-text-btn').style.display = 'block';
+            }
+        }
+
+        function selectAnswer(answer) {
+            selectedAnswer = answer;
+            document.querySelectorAll('.option-btn').forEach(btn => {
+                btn.classList.remove('selected');
+                if (btn.innerText === answer) {
+                    btn.classList.add('selected');
+                }
+            });
+            
+            if (currentQuestion.type === 'choice') {
+                submitAnswer(selectedAnswer);
+            }
+        }
+
+        function updateCheckboxSelection() {
+            const checkboxes = document.querySelectorAll('#options-container input[type="checkbox"]:checked');
+            selectedAnswer = Array.from(checkboxes).map(cb => cb.value).join(',');
+        }
+
+        function submitTextAnswer() {
+            if (currentQuestion.type === 'checkbox') {
+                updateCheckboxSelection();
+            } else if (currentQuestion.type === 'text') {
+                selectedAnswer = document.getElementById('text-answer')?.value || '';
+            }
+            
+            if (!selectedAnswer && currentQuestion.type !== 'text') {
+                alert('Пожалуйста, выберите ответ');
+                return;
+            }
+            
+            if (currentQuestion.type === 'text' && !selectedAnswer.trim()) {
+                alert('Пожалуйста, введите ответ');
+                return;
+            }
+            
+            submitAnswer(selectedAnswer);
+        }
+
+        function submitAnswer(answer) {
+            socket.emit('submit_answer', {
+                game_code: code,
+                user_id: userId,
+                question_index: currentQuestionIndex,
+                answer: answer
+            });
+            
+            document.querySelectorAll('.option-btn').forEach(btn => btn.disabled = true);
+            document.getElementById('submit-text-btn').disabled = true;
+        }
+
+        function startTimer(seconds) {
+            let timeLeft = seconds;
+            const timerEl = document.getElementById('timer');
+            timerEl.innerText = timeLeft;
+            
+            const interval = setInterval(() => {
+                timeLeft--;
+                timerEl.innerText = timeLeft;
+                if (timeLeft <= 3) {
+                    timerEl.style.animation = 'pulse 0.5s infinite';
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(interval);
+                }
+            }, 1000);
+        }
+
+        function showQuestionResult(isCorrect, pointsEarned) {
+            const overlay = document.createElement('div');
+            overlay.className = 'result-overlay';
+            overlay.innerHTML = `
+                <div class="result-card">
+                    <div class="${isCorrect ? 'result-correct' : 'result-wrong'}">
+                        ${isCorrect ? '✓' : '✗'}
+                    </div>
+                    <h2>${isCorrect ? 'Правильно!' : 'Неправильно'}</h2>
+                    <p>${isCorrect ? `+${pointsEarned} очков!` : ''}</p>
+                    <button class="btn btn-primary" onclick="this.closest('.result-overlay').remove()">OK</button>
+                </div>
+            `;
+            document.body.appendChild(overlay);
+            setTimeout(() => overlay.remove(), 2000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+
+        getUserInfo();
+    </script>
+</body>
+</html>

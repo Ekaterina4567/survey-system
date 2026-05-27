@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Управление игрой - SurveySystem</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js"></script>
+    <style>
+        .players-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 1rem;
+            margin-bottom: 2rem;
+        }
+        .player-card {
+            background: white;
+            border-radius: 10px;
+            padding: 1rem;
+            border: 1px solid #EDE3D8;
+            text-align: center;
+        }
+        .stats-panel {
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
+            color: white;
+            padding: 1.5rem;
+            border-radius: 20px;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .timer-circle {
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 1rem auto;
+            font-size: 2.5rem;
+            font-weight: 800;
+            color: #8B5E3C;
+        }
+        .question-area {
+            background: #F5EDE3;
+            border-radius: 20px;
+            padding: 1.5rem;
+            margin-bottom: 1.5rem;
+            text-align: center;
+        }
+        .question-text {
+            font-size: 1.3rem;
+            font-weight: 600;
+            margin-bottom: 1rem;
+        }
+        .result-item {
+            background: white;
+            border-radius: 10px;
+            padding: 0.5rem 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .final-result {
+            background: white;
+            border-radius: 10px;
+            padding: 1rem;
+            margin-bottom: 0.5rem;
+            display: flex;
+            justify-content: space-between;
+        }
+        .final-result.top {
+            background: linear-gradient(135deg, #FFD700, #FFA500);
+            color: white;
+        }
+        .waiting-players {
+            text-align: center;
+            padding: 2rem;
+            background: #F5EDE3;
+            border-radius: 20px;
+        }
+        .btn-start {
+            font-size: 1.2rem;
+            padding: 1rem 2rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">🎮 SurveySystem Game</div>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/student_dashboard">Мои результаты</a>
+            <a href="#" onclick="logout()">Выход</a>
+        </div>
+    </nav>
+
+    <div class="card">
+        <div id="setup-screen">
+            <div class="admin-header">
+                <h1>🎮 Управление игрой</h1>
+                <p>Код игры: <strong id="game-code-display"></strong></p>
+            </div>
+            
+            <div id="players-list" class="players-grid"></div>
+            
+            <div id="game-controls" style="text-align: center;">
+                <button id="start-game-btn" class="btn btn-primary btn-start" onclick="startGame()">
+                    🚀 Начать игру
+                </button>
+                <p style="margin-top: 1rem; color: #7A6B5D;">
+                    Попросите учеников отсканировать QR-код и присоединиться к игре
+                </p>
+            </div>
+        </div>
+
+        <div id="game-screen" style="display: none;">
+            <div class="stats-panel">
+                <div>Вопрос <span id="current-question-num">1</span> / <span id="total-questions">0</span></div>
+                <div class="timer-circle" id="timer-display">0</div>
+            </div>
+            
+            <div class="question-area">
+                <div class="question-text" id="question-text">Загрузка...</div>
+            </div>
+            
+            <div id="question-results" style="display: none;">
+                <h3>📊 Результаты вопроса</h3>
+                <div id="results-stats"></div>
+            </div>
+        </div>
+
+        <div id="final-screen" style="display: none;">
+            <div class="admin-header">
+                <h1>🏆 Игра завершена!</h1>
+            </div>
+            <div id="final-results"></div>
+            <div style="text-align: center; margin-top: 2rem;">
+                <a href="/student_dashboard" class="btn btn-primary">📊 К результатам</a>
+                <button onclick="location.reload()" class="btn btn-secondary">🔄 Новая игра</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const code = window.location.pathname.split('/').pop();
+        let socket = null;
+        let questions = [];
+        let timePerQuestion = 10;
+        let isGameActive = false;
+
+        document.getElementById('game-code-display').innerText = code;
+
+        socket = io();
+
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            socket.emit('join_game_host', {
+                game_code: code,
+                time_per_question: timePerQuestion
+            });
+        });
+
+        socket.on('players_update', (data) => {
+            updatePlayersList(data.players);
+        });
+
+        socket.on('player_joined', (data) => {
+            showToast(`🎉 ${data.username} присоединился! (${data.count} игроков)`);
+        });
+
+        socket.on('game_started', (data) => {
+            isGameActive = true;
+            document.getElementById('setup-screen').style.display = 'none';
+            document.getElementById('game-screen').style.display = 'block';
+            document.getElementById('final-screen').style.display = 'none';
+            document.getElementById('total-questions').innerText = data.total_questions;
+            showToast('🎮 Игра началась!');
+        });
+
+        socket.on('question_start', (data) => {
+            displayQuestion(data.question);
+            startTimer(data.time_left);
+            document.getElementById('current-question-num').innerText = data.question_index + 1;
+            document.getElementById('question-results').style.display = 'none';
+        });
+
+        socket.on('time_up', () => {
+            showToast('⏰ Время вышло!');
+        });
+
+        socket.on('question_results', (data) => {
+            document.getElementById('question-results').style.display = 'block';
+            document.getElementById('results-stats').innerHTML = `
+                <div style="text-align: center; padding: 1rem;">
+                    <div style="font-size: 2rem;">${data.correct_count} / ${data.total_players}</div>
+                    <div>учеников ответили правильно</div>
+                    <div>(${data.percentage}%)</div>
+                </div>
+            `;
+        });
+
+        socket.on('game_ended', (data) => {
+            displayFinalResults(data.results);
+        });
+
+        async function loadTestData() {
+            try {
+                const response = await fetch('/api/get_test_by_code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+                
+                if (data.success) {
+                    questions = data.test.questions;
+                    timePerQuestion = data.test.time_per_question || 10;
+                }
+            } catch (error) {
+                console.error('Error loading test:', error);
+            }
+        }
+
+        function updatePlayersList(players) {
+            const container = document.getElementById('players-list');
+            if (!players || players.length === 0) {
+                container.innerHTML = '<div class="waiting-players">⏳ Ожидание подключения игроков...</div>';
+                return;
+            }
+            
+            container.innerHTML = players.map(p => `
+                <div class="player-card">
+                    <div>👨‍🎓 ${escapeHtml(p.username)}</div>
+                </div>
+            `).join('');
+        }
+
+        function displayQuestion(question) {
+            document.getElementById('question-text').innerHTML = escapeHtml(question.text);
+        }
+
+        function startTimer(seconds) {
+            let timeLeft = seconds;
+            const timerEl = document.getElementById('timer-display');
+            const interval = setInterval(() => {
+                if (!isGameActive) {
+                    clearInterval(interval);
+                    return;
+                }
+                timerEl.innerText = timeLeft;
+                timeLeft--;
+                if (timeLeft < 0) {
+                    clearInterval(interval);
+                }
+            }, 1000);
+        }
+
+        function displayFinalResults(results) {
+            document.getElementById('game-screen').style.display = 'none';
+            document.getElementById('final-screen').style.display = 'block';
+            
+            const container = document.getElementById('final-results');
+            container.innerHTML = results.map((r, idx) => `
+                <div class="final-result ${idx === 0 ? 'top' : ''}">
+                    <div><strong>${idx + 1}. ${escapeHtml(r.username)}</strong><br>
+                    <small>✅ ${r.correct_answers} правильных ответов</small></div>
+                    <div style="font-size: 1.5rem; font-weight: 700;">${r.score} / ${r.total_possible}</div>
+                </div>
+            `).join('');
+        }
+
+        function startGame() {
+            if (questions.length === 0) {
+                alert('Загрузка теста...');
+                loadTestData();
+                setTimeout(() => startGame(), 1000);
+                return;
+            }
+            
+            socket.emit('start_game', {
+                game_code: code,
+                questions: questions,
+                time_per_question: timePerQuestion
+            });
+            
+            document.getElementById('start-game-btn').disabled = true;
+            document.getElementById('start-game-btn').innerHTML = '⏳ Игра началась...';
+        }
+
+        function showToast(message) {
+            const toast = document.createElement('div');
+            toast.style.cssText = `
+                position: fixed;
+                bottom: 20px;
+                right: 20px;
+                background: #8B5E3C;
+                color: white;
+                padding: 0.75rem 1.5rem;
+                border-radius: 9999px;
+                z-index: 1000;
+            `;
+            toast.innerText = message;
+            document.body.appendChild(toast);
+            setTimeout(() => toast.remove(), 3000);
+        }
+
+        function escapeHtml(text) {
+            if (!text) return '';
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        async function logout() {
+            await fetch('/logout');
+            window.location.href = '/';
+        }
+
+        loadTestData();
+    </script>
+</body>
+</html>

@@ -33,16 +33,33 @@
             white-space: nowrap;
             font-size: 0.75rem;
         }
-        .text-answer-input {
-            width: 100%;
-            padding: 0.75rem;
-            border: 1px solid var(--border-light);
-            border-radius: var(--radius-sm);
-            font-family: inherit;
+        .mode-selector {
+            background: var(--primary-soft);
+            border-radius: var(--radius-lg);
+            padding: 1rem;
+            margin-bottom: 1.5rem;
         }
-        .text-answer-input:focus {
-            outline: none;
+        .mode-option {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            border-radius: var(--radius-md);
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 2px solid transparent;
+        }
+        .mode-option.selected {
             border-color: var(--primary);
+            background: white;
+        }
+        .mode-option:hover {
+            background: white;
+        }
+        .time-setting {
+            margin-top: 1rem;
+            padding: 1rem;
+            background: white;
+            border-radius: var(--radius-md);
         }
         .help-text {
             font-size: 0.7rem;
@@ -54,9 +71,7 @@
 <body>
     <nav class="navbar">
         <div class="nav-brand">📋 SurveySystem</div>
-        <div class="nav-links" id="navLinks">
-            <!-- Заполняется JavaScript -->
-        </div>
+        <div class="nav-links" id="navLinks"></div>
     </nav>
 
     <div class="admin-header">
@@ -70,6 +85,32 @@
             <input type="text" id="test-title" placeholder="Например: Основы программирования">
         </div>
         
+        <div class="mode-selector">
+            <label style="display: block; margin-bottom: 1rem; font-weight: 600;">🎮 Режим прохождения</label>
+            <div class="mode-option" id="mode-normal" onclick="selectMode('normal')">
+                <div>📝</div>
+                <div>
+                    <strong>Обычный режим</strong>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Студенты проходят тест в своем темпе</div>
+                </div>
+            </div>
+            <div class="mode-option" id="mode-game" onclick="selectMode('game')">
+                <div>🎮</div>
+                <div>
+                    <strong>Игровой режим</strong>
+                    <div style="font-size: 0.8rem; color: var(--text-muted);">Живая игра с таймером и статистикой в реальном времени</div>
+                </div>
+            </div>
+            
+            <div id="game-settings" style="display: none;">
+                <div class="time-setting">
+                    <label>⏱ Время на вопрос (секунд)</label>
+                    <input type="number" id="time-per-question" value="10" min="5" max="60" step="5">
+                    <div class="help-text">Сколько секунд дается на ответ на каждый вопрос</div>
+                </div>
+            </div>
+        </div>
+        
         <div id="questions-container"></div>
         
         <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
@@ -81,12 +122,26 @@
 
     <!-- Модальное окно для QR кода -->
     <div id="qr-modal" style="display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 1000; align-items: center; justify-content: center;">
-        <div style="background: white; border-radius: 28px; padding: 2rem; max-width: 400px; text-align: center;">
+        <div style="background: white; border-radius: 28px; padding: 2rem; max-width: 450px; text-align: center;">
             <h3 id="qr-title"></h3>
-            <img id="qr-image" style="max-width: 250px; margin: 1rem 0;">
+            <img id="qr-image" style="max-width: 200px; margin: 1rem 0;">
             <p>Код: <strong id="qr-code-text"></strong></p>
-            <p>Ссылка: <span id="qr-url" style="font-size: 0.8rem; word-break: break-all;"></span></p>
-            <div style="display: flex; gap: 1rem; justify-content: center;">
+            
+            <div id="game-mode-info" style="display: none; background: #E8F0F7; padding: 1rem; border-radius: 12px; margin: 1rem 0;">
+                <strong>🎮 Игровой режим активирован!</strong>
+                <p style="font-size: 0.8rem; margin-top: 0.5rem;">
+                    🔗 Ссылка для ведущего:<br>
+                    <span id="host-url" style="font-size: 0.7rem; word-break: break-all;"></span>
+                </p>
+                <img id="game-qr-image" style="max-width: 150px; margin: 0.5rem 0;">
+                <p style="font-size: 0.8rem;">📱 Ученики сканируют этот QR-код для игры</p>
+            </div>
+            
+            <div id="normal-mode-info">
+                <p>Ссылка: <span id="qr-url" style="font-size: 0.8rem; word-break: break-all;"></span></p>
+            </div>
+            
+            <div style="display: flex; gap: 1rem; justify-content: center; margin-top: 1rem;">
                 <button class="btn btn-primary" onclick="closeQRModal()">Закрыть</button>
                 <button class="btn btn-secondary" onclick="copyTestCode()">📋 Копировать код</button>
             </div>
@@ -96,8 +151,8 @@
     <script>
         let questionCounter = 0;
         let lastCreatedCode = null;
+        let selectedMode = 'normal';
 
-        // Загрузка навигации
         async function loadNavigation() {
             try {
                 const response = await fetch('/check_auth');
@@ -122,6 +177,16 @@
             } catch (error) {
                 console.error('Error loading navigation:', error);
             }
+        }
+
+        function selectMode(mode) {
+            selectedMode = mode;
+            document.getElementById('mode-normal').classList.remove('selected');
+            document.getElementById('mode-game').classList.remove('selected');
+            document.getElementById(`mode-${mode}`).classList.add('selected');
+            
+            const gameSettings = document.getElementById('game-settings');
+            gameSettings.style.display = mode === 'game' ? 'block' : 'none';
         }
 
         function addQuestion() {
@@ -154,7 +219,7 @@
                         <div class="form-group">
                             <label>📝 Правильный текстовый ответ *</label>
                             <input type="text" class="text-correct-answer" placeholder="Введите правильный ответ (например: Москва)">
-                            <div class="help-text">Студент должен будет ввести этот ответ точно (регистр не важен, пробелы в начале и конце игнорируются)</div>
+                            <div class="help-text">Студент должен будет ввести этот ответ точно (регистр не важен)</div>
                         </div>
                     </div>
                     <div class="form-group" style="margin-top: 1rem;">
@@ -192,7 +257,6 @@
             } else {
                 optionsContainer.style.display = 'block';
                 textContainer.style.display = 'none';
-                // Если нет вариантов, добавим один
                 const optionsList = optionsContainer.querySelector('.options-list');
                 if (optionsList && optionsList.children.length === 0) {
                     addOption(id);
@@ -248,7 +312,6 @@
                 let correctAnswer = null;
                 
                 if (type === 'text') {
-                    // Для текстового вопроса - берём из поля ввода
                     const textAnswer = block.querySelector('.text-correct-answer')?.value.trim();
                     if (!textAnswer) {
                         alert(`Для текстового вопроса "${text}" укажите правильный ответ`);
@@ -257,7 +320,6 @@
                     }
                     correctAnswer = textAnswer.toLowerCase();
                 } else {
-                    // Для вопросов с вариантами
                     const optionItems = block.querySelectorAll('.option-item');
                     let correctOptions = [];
                     
@@ -293,7 +355,6 @@
                 });
             }
             
-            // Показываем индикатор загрузки
             const createBtn = document.querySelector('.btn-primary');
             const originalText = createBtn.textContent;
             createBtn.textContent = '⏳ Создание...';
@@ -303,21 +364,23 @@
                 const response = await fetch('/api/create_test', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ title: title, questions: questions })
+                    body: JSON.stringify({ 
+                        title: title, 
+                        questions: questions,
+                        game_mode: selectedMode === 'game' ? 1 : 0,
+                        time_per_question: selectedMode === 'game' ? parseInt(document.getElementById('time-per-question').value) : 10
+                    })
                 });
                 
                 const data = await response.json();
                 
                 if (data.success) {
                     lastCreatedCode = data.code;
-                    showQRModal(data.title, data.qr_code, data.code);
+                    showQRModal(data.title, data.qr_code, data.code, data.game_qr_code, selectedMode === 'game');
                     
-                    // Очищаем форму
                     document.getElementById('test-title').value = '';
                     document.getElementById('questions-container').innerHTML = '';
                     questionCounter = 0;
-                    
-                    // Добавляем первый вопрос заново
                     addQuestion();
                 } else {
                     alert('❌ Ошибка: ' + (data.error || 'Неизвестная ошибка'));
@@ -331,18 +394,38 @@
             }
         }
 
-        function showQRModal(title, qrBase64, code) {
+        function showQRModal(title, qrBase64, code, gameQrBase64, isGameMode) {
             const url = `${window.location.origin}/take_test?code=${code}`;
             document.getElementById('qr-title').textContent = title;
             document.getElementById('qr-image').src = `data:image/png;base64,${qrBase64}`;
             document.getElementById('qr-code-text').textContent = code;
             document.getElementById('qr-url').textContent = url;
+            
+            if (isGameMode) {
+                document.getElementById('game-mode-info').style.display = 'block';
+                document.getElementById('normal-mode-info').style.display = 'none';
+                const hostUrl = `${window.location.origin}/game_host/${code}`;
+                document.getElementById('host-url').textContent = hostUrl;
+                if (gameQrBase64) {
+                    document.getElementById('game-qr-image').src = `data:image/png;base64,${gameQrBase64}`;
+                }
+            } else {
+                document.getElementById('game-mode-info').style.display = 'none';
+                document.getElementById('normal-mode-info').style.display = 'block';
+            }
+            
             document.getElementById('qr-modal').style.display = 'flex';
         }
 
         function closeQRModal() {
             document.getElementById('qr-modal').style.display = 'none';
-            if (confirm('Тест создан! Перейти к списку ваших тестов?')) {
+            if (selectedMode === 'game' && lastCreatedCode) {
+                if (confirm('Тест создан в игровом режиме! Перейти к управлению игрой?')) {
+                    window.location.href = `/game_host/${lastCreatedCode}`;
+                } else {
+                    window.location.href = '/student_dashboard';
+                }
+            } else if (confirm('Тест создан! Перейти к списку ваших тестов?')) {
                 window.location.href = '/student_dashboard';
             }
         }
@@ -365,12 +448,11 @@
             window.location.href = '/';
         }
 
-        // Инициализация
         loadNavigation();
         
-        // Добавляем первый вопрос при загрузке
         window.addEventListener('DOMContentLoaded', function() {
             addQuestion();
+            selectMode('normal');
         });
     </script>
 </body>
