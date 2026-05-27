@@ -1,81 +1,11 @@
 <!DOCTYPE html>
 <html lang="ru">
-f="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
-=======
-<nav class="navbar">
-    <div class="nav-brand">
-        <img src="/static/Лого диплом.svg" alt="SurveySystem Logo" class="logo-img">
-        <span>SurveySystem</span>
-    </div>
-    <div class="nav-links" id="nav-links">
-        <a href="/" class="active">Главная</a>
-        <a href="/login_page">Вход</a>
-        <a href="/register_page">Регистрация</a>
-    </div>
-</nav>
-    <style>
-        /* Дополнительные стили для логотипа */
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-        }
-        
-        .logo-icon {
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
-            border-radius: 12px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 22px;
-            font-weight: 700;
-            color: white;
-            box-shadow: 0 4px 10px rgba(99, 102, 241, 0.3);
-            transition: transform 0.2s ease;
-        }
-        
-        .logo-icon:hover {
-            transform: scale(1.05);
-        }
-        
-        .logo-text {
-            font-size: 1.4rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, #1e293b 0%, #3b82f6 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            color: transparent;
-            letter-spacing: -0.5px;
-        }
-        
-        .nav-brand {
-            display: flex;
-            align-items: center;
-            gap: 12px;
-            text-decoration: none;
-        }
-        
-        /* Декоративный элемент для лого в hero секции */
-        .logo-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(99, 102, 241, 0.1);
-            padding: 6px 16px;
-            border-radius: 40px;
-            margin-bottom: 1rem;
-            font-size: 0.85rem;
-            color: #6366f1;
-            font-weight: 500;
-        }
-        
-        .logo-badge span {
-            font-size: 1.1rem;
-        }
-    </style>
->>>>>>> bcd1ac3fecdde939cd0e6704b35e3781b033d470
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SurveySystem - Платформа тестирования</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
     <nav class="navbar">
@@ -90,97 +20,97 @@ f="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&displ
         </div>
     </nav>
 
-    <div class="hero-section">
-        <div class="hero-content">
-            <div class="logo-badge">
-                <span>✨</span> Добро пожаловать в SurveySystem
-            </div>
-            <h1>Система <span class="highlight">онлайн тестирования</span></h1>
-            <p>Создавайте тесты, проходите их и получайте результаты. Вся статистика сохраняется в вашем личном кабинете.</p>
+    <!-- HERO СЕКЦИЯ (Дизайн в стиле референса) -->
+    <main class="hero-wrapper">
+        
+        <!-- ЛЕВАЯ ЧАСТЬ: Текст -->
+        <div class="hero-content fade-in">
+            <div class="badge">✨ Онлайн-тестирование</div>
+            <h1>Создавайте тесты <br>и <span class="highlight">получайте знания</span></h1>
+            <p>
+                Создавайте интерактивные опросы, проходите тесты и получайте мгновенные результаты. 
+                Вся статистика сохраняется в вашем личном кабинете.
+            </p>
             <div class="hero-buttons">
-                <a href="/take_test" class="btn btn-primary">📝 Пройти тест</a>
-                <a href="/create_test_page" class="btn btn-secondary">✨ Создать тест</a>
+                <a href="/take_test" class="btn btn-primary"> Пройти тест</a>
+                <a href="/create_test_page" class="btn btn-outline">✨ Создать тест</a>
+            </div>
+            
+            <!-- Мини-статистика под текстом -->
+            <div class="hero-stats">
+                <div class="h-stat">
+                    <strong>150+</strong>
+                    <span>Тестов</span>
+                </div>
+                <div class="h-stat">
+                    <strong>2k+</strong>
+                    <span>Студентов</span>
+                </div>
             </div>
         </div>
-        <div class="hero-illustration">
-            <div class="illustration-box">
-                <img src="/static/Лого диплом.svg" alt="Logo" style="width: 80px; height: 80px;">
-                <div style="font-weight: 600; color: #3D2B1F; margin-top: 0.5rem;">Тест-система</div>
-                <div style="font-size: 0.8rem; color: #7A6B5D;">Сохраняйте результаты</div>
-            </div>
-        </div>
-    </div>
 
-    <div class="features-section">
+        <!-- ПРАВАЯ ЧАСТЬ: Большая иллюстрация (аналог Луны) -->
+        <div class="hero-visual fade-in">
+            <!-- Фоновый круг (Луна) -->
+            <div class="big-moon"></div>
+            
+            <!-- Плавающие элементы (Вместо зайцев - элементы теста) -->
+            <div class="float-card card-1">
+                <div class="card-line"></div>
+                <div class="card-check">✓</div>
+            </div>
+            
+            <div class="float-card card-2">
+                <div class="card-line short"></div>
+                <div class="card-circle"></div>
+            </div>
+            
+            <div class="float-card card-3">
+                <div class="card-line"></div>
+                <div class="card-line short"></div>
+            </div>
+            
+            <!-- Декоративные точки -->
+            <div class="dot dot-1"></div>
+            <div class="dot dot-2"></div>
+            <div class="dot dot-3"></div>
+        </div>
+    </main>
+
+    <!-- БЛОК ПРЕИМУЩЕСТВ (Карточки) -->
+    <section class="features-section">
         <div class="feature-card">
-            <div class="feature-icon">📝</div>
+            <div class="feature-icon">‍🎓</div>
             <h3>Для студентов</h3>
-            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется в личном кабинете.</p>
+            <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется.</p>
         </div>
         <div class="feature-card">
             <div class="feature-icon">👨‍💼</div>
             <h3>Для преподавателей</h3>
-            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты каждого студента.</p>
+            <p>Создавайте тесты с автоматической проверкой. Просматривайте результаты.</p>
         </div>
         <div class="feature-card">
-            <div class="feature-icon">📊</div>
+            <div class="feature-icon"></div>
             <h3>Статистика</h3>
             <p>Детальная аналитика: средний балл, лучшие результаты, прогресс каждого студента.</p>
         </div>
-    </div>
+    </section>
 
+    <!-- НИЖНЯЯ СТАТИСТИКА (Баннер) -->
     <div class="stats-banner">
         <div class="stat-item">
-            <div class="stat-number" id="active-tests">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Всего тестов</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="total-attempts">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Пройдено тестов</div>
         </div>
         <div class="stat-item">
-            <div class="stat-number" id="total-users">0</div>
+            <div class="stat-number">0</div>
             <div class="stat-label">Студентов</div>
         </div>
     </div>
 
-    <script>
-        async function loadStats() {
-            try {
-                const response = await fetch('/api/get_all_tests');
-                if (response.ok) {
-                    const tests = await response.json();
-                    const statsDiv = document.getElementById('active-tests');
-                    if (statsDiv) {
-                        statsDiv.textContent = tests.length;
-                    }
-                }
-            } catch (error) {
-                console.error('Error loading stats:', error);
-            }
-        }
-        
-        loadStats();
-        
-        // Проверяем авторизацию для отображения правильных кнопок
-        fetch('/check_auth')
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                const navLinks = document.getElementById('nav-links');
-                if (data.authenticated && navLinks) {
-                    if (data.role === 'admin') {
-                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/admin">Админ панель</a><a href="#" onclick="logout()">Выход</a>';
-                    } else {
-                        navLinks.innerHTML = '<a href="/">Главная</a><a href="/student_dashboard">Мои результаты</a><a href="/take_test">Пройти тест</a><a href="/create_test_page">Создать тест</a><a href="#" onclick="logout()">Выход</a>';
-                    }
-                }
-            })
-            .catch(function(error) { console.error('Auth check error:', error); });
-            
-        async function logout() {
-            await fetch('/logout');
-            window.location.href = '/';
-        }
-    </script>
 </body>
 </html>
