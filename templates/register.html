@@ -7,16 +7,18 @@
     <link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
-    <nav class="navbar">
+   <!-- НАВИГАЦИЯ С ЛОГОТИПОМ И НАЗВАНИЕМ -->
+<nav class="navbar">
     <a href="/" class="logo-link">
         <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
         <span class="logo-text">SurveySystem</span>
     </a>
-    <div class="nav-links">
-        <a href="/">Главная</a>
+    <div class="nav-links" id="nav-links">
+        <a href="/" class="active">Главная</a>
         <a href="/login_page">Вход</a>
-        <a href="/register_page" class="active">Регистрация</a>
+        <a href="/register_page">Регистрация</a>
     </div>
+</nav>
 </nav>
 
     <div class="auth-container">
