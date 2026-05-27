@@ -7,14 +7,10 @@
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
-    <div class="big-moon">
-    <img src="/static/Logo.svg" alt="Logo" class="moon-logo">
-</div>
 <body>
     <!-- НАВИГАЦИЯ С ЛОГОТИПОМ И НАЗВАНИЕМ -->
     <nav class="navbar">
         <a href="/" class="logo-link">
-            <!-- Место для вашего PNG логотипа -->
             <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
             <span class="logo-text">SurveySystem</span>
         </a>
@@ -43,29 +39,38 @@
             <!-- Мини-статистика под текстом -->
             <div class="hero-stats">
                 <div class="h-stat">
-                   
+                  
                 </div>
                 <div class="h-stat">
-                   
+                    
                 </div>
             </div>
         </div>
 
-        <!-- ПРАВАЯ ЧАСТЬ: Иллюстрация -->
+        <!-- ПРАВАЯ ЧАСТЬ: Иллюстрация с логотипом ВНУТРИ круга -->
         <div class="hero-visual fade-in">
-            <div class="big-moon"></div>
+            <!-- Фоновый круг (Луна) с логотипом внутри -->
+            <div class="big-moon">
+                <img src="/static/Logo.svg" alt="SurveySystem Logo" class="moon-logo">
+            </div>
+            
+            <!-- Плавающие элементы вокруг круга -->
             <div class="float-card card-1">
                 <div class="card-line"></div>
                 <div class="card-check">✓</div>
             </div>
+            
             <div class="float-card card-2">
                 <div class="card-line short"></div>
                 <div class="card-circle"></div>
             </div>
+            
             <div class="float-card card-3">
                 <div class="card-line"></div>
                 <div class="card-line short"></div>
             </div>
+            
+            <!-- Декоративные точки -->
             <div class="dot dot-1"></div>
             <div class="dot dot-2"></div>
             <div class="dot dot-3"></div>
@@ -91,11 +96,9 @@
         </div>
     </section>
 
-    <!-- НИЖНЯЯ СТАТИСТИКА -->
-  
-
+   
     <style>
-        /* Дополнительные стили для навигации с логотипом */
+        /* Дополнительные стили */
         .navbar {
             display: flex;
             justify-content: space-between;
@@ -212,8 +215,8 @@
             align-items: center;
             justify-content: center;
         }
-        
-         .big-moon {
+
+        .big-moon {
             width: 280px;
             height: 280px;
             background: radial-gradient(circle at 30% 30%, #F5EDE3, #E8D5B7);
@@ -225,6 +228,18 @@
             justify-content: center;
         }
 
+        /* Логотип внутри круга */
+        .moon-logo {
+            width: 130px;
+            height: auto;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 5;
+            display: block;
+        }
+
         .float-card {
             position: absolute;
             background: white;
@@ -234,6 +249,7 @@
             display: flex;
             gap: 8px;
             align-items: center;
+            z-index: 10;
         }
 
         .card-1 {
@@ -404,6 +420,10 @@
                 width: 200px;
                 height: 200px;
             }
+            
+            .moon-logo {
+                width: 90px;
+            }
 
             .features-section {
                 grid-template-columns: 1fr;
@@ -427,10 +447,21 @@
                 font-size: 1.1rem;
             }
         }
+        
+        @media (max-width: 480px) {
+            .moon-logo {
+                width: 70px;
+            }
+            
+            .big-moon {
+                width: 160px;
+                height: 160px;
+            }
+        }
     </style>
 
     <script>
-        // Динамическая загрузка навигации (опционально)
+        // Динамическая загрузка навигации
         async function loadNav() {
             try {
                 const response = await fetch('/check_auth');
