@@ -36,7 +36,23 @@
     --radius-xl: 28px;
     --radius-full: 9999px;
 }
-/* Логотип в навигации - исправленный */
+
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg-page);
+    color: var(--text-primary);
+    line-height: 1.5;
+    font-size: 14px;
+    min-height: 100vh;
+}
+
+/* ===== ЛОГОТИП В НАВИГАЦИИ (ВЕРХНИЙ ЛЕВЫЙ УГОЛ) ===== */
 .logo-link {
     display: flex;
     align-items: center;
@@ -62,50 +78,22 @@
     background-clip: text;
     color: transparent;
 }
-* {
-    margin: 0;
-    padding: 0;
-    box-sizing: border-box;
-}
 
-body {
-    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-    background: var(--bg-page);
-    color: var(--text-primary);
-    line-height: 1.5;
-    font-size: 14px;
-    min-height: 100vh;
-}
-
-/* Логотип */
-.logo-container {
-    display: flex;
+/* Бейдж с логотипом в hero секции */
+.logo-badge {
+    display: inline-flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
+    background: rgba(139, 94, 60, 0.1);
+    padding: 6px 16px;
+    border-radius: 40px;
+    margin-bottom: 1rem;
+    font-size: 0.85rem;
+    color: var(--primary);
+    font-weight: 500;
 }
 
-.logo-link {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    text-decoration: none;
-}
-
-.logo-img {
-    height: 40px;
-    width: auto;
-    transition: transform 0.2s ease;
-}
-
-.logo-img:hover {
-    transform: scale(1.05);
-}
-
-.logo-text {
-    font-size: 1.4rem;
-    font-weight: 700;
-    color: #1e293b;
-}
+/* Навигация */
 .navbar {
     background: var(--bg-white);
     padding: 1rem 2.5rem;
@@ -117,16 +105,6 @@ body {
     top: 0;
     z-index: 100;
     box-shadow: var(--shadow-sm);
-}
-
-.nav-brand {
-    font-size: 1.5rem;
-    font-weight: 700;
-    background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
-    -webkit-background-clip: text;
-    background-clip: text;
-    color: transparent;
-    letter-spacing: -0.5px;
 }
 
 .nav-links {
@@ -884,66 +862,6 @@ body {
     animation: fadeIn 0.3s ease;
 }
 
-@media (max-width: 768px) {
-    .hero-section {
-        grid-template-columns: 1fr;
-        padding: 2rem;
-        text-align: center;
-    }
-    
-    .hero-content h1 {
-        font-size: 2rem;
-    }
-    
-    .hero-buttons {
-        justify-content: center;
-    }
-    
-    .features-section {
-        padding: 2rem;
-    }
-    
-    .stats-banner {
-        grid-template-columns: 1fr;
-        gap: 1rem;
-        padding: 1.5rem;
-    }
-    
-    .navbar {
-        flex-direction: column;
-        gap: 0.75rem;
-        padding: 1rem;
-    }
-    
-    .card {
-        margin: 0 1rem 1rem;
-        padding: 1.25rem;
-    }
-    
-    .tabs {
-        padding: 0 1rem;
-    }
-    
-    .survey-actions {
-        flex-direction: column;
-    }
-    
-    .btn {
-        justify-content: center;
-    }
-    
-    .form-row {
-        grid-template-columns: 1fr;
-    }
-    
-    .search-container {
-        padding: 1.5rem;
-    }
-    
-    .search-container h1 {
-        font-size: 1.5rem;
-    }
-}
 /* ===== ОБЛАЧКО С ПЕРСОНАЖЕМ ===== */
 .speech-cloud {
     position: relative;
@@ -992,7 +910,7 @@ body {
     font-size: 0.85rem;
 }
 
-/* Облачко снизу (как на картинке) */
+/* Облачко снизу */
 .speech-cloud-bottom {
     position: relative;
     background: white;
@@ -1195,15 +1113,23 @@ body {
 
 /* Телефоны (до 768px) */
 @media (max-width: 768px) {
-    /* Навигация */
+    /* Навигация с логотипом */
     .navbar {
         flex-direction: column;
         padding: 0.75rem;
         gap: 0.75rem;
     }
     
-    .nav-brand {
-        font-size: 1.2rem;
+    .logo-link {
+        justify-content: center;
+    }
+    
+    .logo-img {
+        height: 35px;
+    }
+    
+    .logo-text {
+        font-size: 1.1rem;
     }
     
     .nav-links {
@@ -1325,6 +1251,10 @@ body {
         font-size: 0.8rem;
     }
     
+    .form-row {
+        grid-template-columns: 1fr;
+    }
+    
     /* Блоки вопросов */
     .question-block {
         padding: 1rem;
@@ -1353,86 +1283,10 @@ body {
         flex: 1 1 100%;
     }
     
-    .correct-label {
-        white-space: normal;
-        font-size: 0.7rem;
-    }
-    
     /* Кнопки */
     .btn {
         padding: 0.6rem 1rem;
         font-size: 0.85rem;
-    }
-    
-    .btn-small {
-        padding: 0.25rem 0.6rem;
-        font-size: 0.7rem;
-    }
-    
-    div[style*="display: flex"],
-    div[style*="display:flex"] {
-        flex-wrap: wrap !important;
-    }
-    
-    /* Сетка моих тестов */
-    .my-tests-grid {
-        grid-template-columns: 1fr !important;
-    }
-    
-    .my-test-card {
-        padding: 0.75rem;
-    }
-    
-    .test-actions {
-        justify-content: flex-start;
-    }
-    
-    /* Результаты таблица */
-    .results-table,
-    .results-table-wrapper table {
-        font-size: 0.7rem;
-    }
-    
-    .results-table th,
-    .results-table td,
-    .results-table-wrapper th,
-    .results-table-wrapper td {
-        padding: 0.4rem !important;
-    }
-    
-    /* Результаты - горизонтальная прокрутка */
-    .results-table-wrapper {
-        overflow-x: auto;
-        -webkit-overflow-scrolling: touch;
-    }
-    
-    .results-table-wrapper table {
-        min-width: 500px;
-    }
-    
-    /* Статистика мини */
-    .results-stats {
-        gap: 0.5rem;
-    }
-    
-    .stat-mini {
-        min-width: 70px;
-        padding: 0.4rem;
-    }
-    
-    .stat-mini .number {
-        font-size: 1rem;
-    }
-    
-    /* Модальное окно QR */
-    #qr-modal > div {
-        margin: 1rem;
-        padding: 1.5rem !important;
-        width: calc(100% - 2rem);
-    }
-    
-    #qr-image {
-        max-width: 180px !important;
     }
     
     /* Страница теста */
@@ -1493,7 +1347,7 @@ body {
         gap: 0.5rem;
     }
     
-    /* Результат теста (детали) */
+    /* Результат теста */
     .result-card .answer-section {
         grid-template-columns: 1fr !important;
         gap: 0.75rem;
@@ -1518,10 +1372,37 @@ body {
         padding: 0.75rem;
     }
     
-    /* Кнопка назад и др. */
-    div[style*="display: flex; gap"],
-    div[style*="display:flex; gap"] {
-        flex-wrap: wrap;
+    /* Таблица результатов */
+    .results-table,
+    .results-table-wrapper table {
+        font-size: 0.7rem;
+    }
+    
+    .results-table th,
+    .results-table td,
+    .results-table-wrapper th,
+    .results-table-wrapper td {
+        padding: 0.4rem !important;
+    }
+    
+    .results-table-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .results-table-wrapper table {
+        min-width: 500px;
+    }
+    
+    /* Модальное окно QR */
+    #qr-modal > div {
+        margin: 1rem;
+        padding: 1.5rem !important;
+        width: calc(100% - 2rem);
+    }
+    
+    #qr-image {
+        max-width: 180px !important;
     }
 }
 
@@ -1561,17 +1442,6 @@ body {
     .option-item .correct-label {
         justify-content: flex-start;
     }
-    
-    .test-actions {
-        flex-direction: column;
-        width: 100%;
-    }
-    
-    .test-actions .btn {
-        width: 100%;
-        text-align: center;
-        justify-content: center;
-    }
 }
 
 /* Улучшение для тач-устройств */
@@ -1595,6 +1465,6 @@ body {
     input, 
     select, 
     textarea {
-        font-size: 16px !important; /* Предотвращает зум на iOS */
+        font-size: 16px !important;
     }
 }
