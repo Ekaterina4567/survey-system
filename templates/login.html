@@ -8,18 +8,17 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <<!-- НАВИГАЦИЯ С ЛОГОТИПОМ И НАЗВАНИЕМ -->
-<nav class="navbar">
-    <a href="/" class="logo-link">
-        <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.src='https://via.placeholder.com/32?text=SS'">
-        <span class="logo-text">SurveySystem</span>
-    </a>
-    <div class="nav-links" id="nav-links">
-        <a href="/" class="active">Главная</a>
-        <a href="/login_page">Вход</a>
-        <a href="/register_page">Регистрация</a>
-    </div>
-</nav>
+    <nav class="navbar">
+        <a href="/" class="logo-link">
+            <img src="/static/Лого диплом.svg" alt="SurveySystem Logo" class="logo-img">
+            <span class="logo-text">SurveySystem</span>
+        </a>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/login_page" class="active">Вход</a>
+            <a href="/register_page">Регистрация</a>
+        </div>
+    </nav>
 
     <div class="auth-container">
         <h1>🔐 Вход в систему</h1>
@@ -43,64 +42,62 @@
         <div class="auth-footer">
             <p>Нет аккаунта? <a href="/register_page">Зарегистрироваться</a></p>
             <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-            
+                👨‍💼 Администратор: admin / admin123
             </p>
         </div>
     </div>
 
     <script>
-        
-       async function login(e) {
-    e.preventDefault();
-    const msgDiv = document.getElementById('message');
-    
-    const username = document.getElementById('username').value.trim();
-    const password = document.getElementById('password').value;
-    
-    if (!username || !password) {
-        msgDiv.className = 'message error';
-        msgDiv.textContent = 'Заполните все поля';
-        msgDiv.style.display = 'block';
-        return;
-    }
-    
-    try {
-        const response = await fetch('/login', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username: username, password: password })
-        });
-        
-        const data = await response.json();
-        
-        if (data.success) {
-            msgDiv.className = 'message success';
-            msgDiv.textContent = data.message;
-            msgDiv.style.display = 'block';
+        async function login(e) {
+            e.preventDefault();
+            const msgDiv = document.getElementById('message');
             
-            // Проверяем параметры редиректа из URL
-            const urlParams = new URLSearchParams(window.location.search);
-            const redirectPage = urlParams.get('redirect');
-            const testCode = urlParams.get('code');
+            const username = document.getElementById('username').value.trim();
+            const password = document.getElementById('password').value;
             
-            setTimeout(() => {
-                if (redirectPage && testCode) {
-                    window.location.href = `/${redirectPage}?code=${testCode}`;
+            if (!username || !password) {
+                msgDiv.className = 'message error';
+                msgDiv.textContent = 'Заполните все поля';
+                msgDiv.style.display = 'block';
+                return;
+            }
+            
+            try {
+                const response = await fetch('/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username: username, password: password })
+                });
+                
+                const data = await response.json();
+                
+                if (data.success) {
+                    msgDiv.className = 'message success';
+                    msgDiv.textContent = data.message;
+                    msgDiv.style.display = 'block';
+                    
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const redirectPage = urlParams.get('redirect');
+                    const testCode = urlParams.get('code');
+                    
+                    setTimeout(() => {
+                        if (redirectPage && testCode) {
+                            window.location.href = `/${redirectPage}?code=${testCode}`;
+                        } else {
+                            window.location.href = data.redirect || '/';
+                        }
+                    }, 1000);
                 } else {
-                    window.location.href = data.redirect || '/';
+                    msgDiv.className = 'message error';
+                    msgDiv.textContent = data.error || 'Ошибка входа';
+                    msgDiv.style.display = 'block';
                 }
-            }, 1000);
-        } else {
-            msgDiv.className = 'message error';
-            msgDiv.textContent = data.error || 'Ошибка входа';
-            msgDiv.style.display = 'block';
+            } catch (error) {
+                msgDiv.className = 'message error';
+                msgDiv.textContent = 'Ошибка подключения к серверу';
+                msgDiv.style.display = 'block';
+            }
         }
-    } catch (error) {
-        msgDiv.className = 'message error';
-        msgDiv.textContent = 'Ошибка подключения к серверу';
-        msgDiv.style.display = 'block';
-    }
-}
     </script>
 </body>
 </html>
