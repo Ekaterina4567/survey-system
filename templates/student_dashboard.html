@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Мои результаты - SurveySystem</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         .result-item {
             background: white;
@@ -76,11 +77,37 @@
             font-size: 0.6rem;
             color: var(--text-secondary);
         }
+        /* Стили для навигации с логотипом */
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        .logo-link:hover {
+            opacity: 0.8;
+        }
+        .logo-img {
+            height: 40px;
+            width: auto;
+            display: block;
+        }
+        .logo-text {
+            font-size: 1.4rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
     </style>
 </head>
 <body>
     <nav class="navbar">
-        <div class="nav-brand">📋 SurveySystem</div>
+        <a href="/" class="logo-link">
+            <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
+            <span class="logo-text">SurveySystem</span>
+        </a>
         <div class="nav-links">
             <a href="/">Главная</a>
             <a href="/student_dashboard" class="active">Мои результаты</a>
@@ -370,7 +397,6 @@
             window.location.href = '/';
         }
         
-        // Проверка авторизации при загрузке
         async function checkAuthAndLoad() {
             try {
                 const response = await fetch('/check_auth');
@@ -388,7 +414,6 @@
             }
         }
         
-        // Запускаем проверку авторизации
         checkAuthAndLoad();
     </script>
 </body>
