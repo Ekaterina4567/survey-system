@@ -7,86 +7,290 @@
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* Общие стили как на главной */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #FDF8F0;
+            color: #3D2B1F;
+            line-height: 1.5;
+            font-size: 14px;
+            min-height: 100vh;
+        }
+
+        /* Навигация как на главной */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #FFFFFF;
+            padding: 0.8rem 2.5rem;
+            border-bottom: 1px solid #EDE3D8;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .logo-link:hover {
+            opacity: 0.85;
+        }
+
+        .logo-img {
+            height: 38px;
+            width: auto;
+            display: block;
+            object-fit: contain;
+        }
+
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav-links a {
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            color: #7A6B5D;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border-radius: 10px;
+        }
+
+        .nav-links a:hover {
+            color: #8B5E3C;
+            background: #F5EDE3;
+        }
+
+        .nav-links a.active {
+            color: #8B5E3C;
+            background: #F5EDE3;
+            font-weight: 600;
+        }
+
+        /* Контейнер входа */
         .auth-container {
             max-width: 420px;
             margin: 2.5rem auto;
-            padding: 2rem 2.5rem;
-            background: var(--bg-card);
-            border-radius: var(--radius-lg);
-            border: 1px solid var(--border-card);
-            box-shadow: var(--shadow-md);
+            padding: 2.5rem;
+            background: #FFFFFF;
+            border-radius: 20px;
+            border: 1px solid #E8DDD0;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
         }
-        
+
         .auth-container h1 {
             font-size: 1.6rem;
-            margin-bottom: 1.25rem;
-            text-align: center;
             font-weight: 700;
+            text-align: center;
+            margin-bottom: 1.5rem;
+            color: #3D2B1F;
         }
-        
-        .auth-container .form-group {
+
+        .auth-container h1 span {
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .form-group {
             margin-bottom: 1rem;
         }
-        
-        .auth-container .form-group label {
-            font-size: 0.85rem;
-            margin-bottom: 0.3rem;
+
+        .form-group label {
+            display: block;
+            margin-bottom: 0.4rem;
             font-weight: 500;
-            color: var(--text-primary);
-        }
-        
-        .auth-container .form-group input {
-            padding: 0.6rem 0.9rem;
-            font-size: 0.9rem;
-            border-radius: var(--radius-sm);
-        }
-        
-        .auth-container .btn {
-            padding: 0.6rem 1.2rem;
-            font-size: 0.9rem;
-        }
-        
-        .auth-footer {
-            margin-top: 1.25rem;
-            padding-top: 1rem;
+            color: #3D2B1F;
             font-size: 0.85rem;
         }
-        
-        .auth-footer p {
-            margin: 0.3rem 0;
+
+        .form-group input {
+            width: 100%;
+            padding: 0.7rem 1rem;
+            border: 1px solid #EDE3D8;
+            border-radius: 10px;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            font-family: inherit;
+            background: #FFFFFF;
+            color: #3D2B1F;
         }
-        
-        .auth-footer .admin-hint {
-            font-size: 0.75rem;
-            color: var(--text-muted);
-            margin-top: 0.5rem;
+
+        .form-group input:focus {
+            outline: none;
+            border-color: #8B5E3C;
+            box-shadow: 0 0 0 3px rgba(139, 94, 60, 0.1);
         }
-        
+
+        .form-group input::placeholder {
+            color: #B8A99A;
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.5rem;
+            padding: 0.7rem 1.5rem;
+            border-radius: 10px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: inherit;
+            width: 100%;
+        }
+
+        .btn-primary {
+            background: #8B5E3C;
+            color: #FFFFFF;
+        }
+
+        .btn-primary:hover {
+            background: #6B4226;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+        }
+
         .message {
-            padding: 0.6rem 0.8rem;
+            padding: 0.7rem 0.9rem;
+            border-radius: 10px;
+            margin-bottom: 1rem;
+            display: none;
             font-size: 0.85rem;
-            margin-bottom: 0.8rem;
         }
-        
-        .navbar {
-            padding: 0.8rem 2.5rem;
+
+        .message.success {
+            background: #E8F5E9;
+            color: #2E7D32;
+            display: block;
+            border-left: 3px solid #2E7D32;
         }
-        
-        .logo-img {
-            height: 38px;
+
+        .message.error {
+            background: #FFEBEE;
+            color: #C62828;
+            display: block;
+            border-left: 3px solid #C62828;
         }
-        
-        .logo-text {
-            font-size: 1.3rem;
+
+        .message.warning {
+            background: #FFF3E0;
+            color: #F57C00;
+            display: block;
+            border-left: 3px solid #F57C00;
         }
-        
-        .nav-links a {
-            padding: 0.45rem 1rem;
+
+        .auth-footer {
+            text-align: center;
+            margin-top: 1.5rem;
+            padding-top: 1.2rem;
+            border-top: 1px solid #EDE3D8;
             font-size: 0.85rem;
+            color: #7A6B5D;
+        }
+
+        .auth-footer a {
+            color: #8B5E3C;
+            text-decoration: none;
+            font-weight: 500;
+        }
+
+        .auth-footer a:hover {
+            text-decoration: underline;
+        }
+
+        .auth-footer .admin-hint {
+            margin-top: 0.5rem;
+            font-size: 0.75rem;
+            color: #B8A99A;
+        }
+
+        /* Мобильная адаптация */
+        @media (max-width: 768px) {
+            .navbar {
+                flex-direction: column;
+                padding: 0.8rem 1rem;
+                gap: 0.75rem;
+            }
+
+            .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 0.5rem;
+            }
+
+            .nav-links a {
+                padding: 0.4rem 0.75rem;
+                font-size: 0.8rem;
+            }
+
+            .auth-container {
+                margin: 1.5rem 1rem;
+                padding: 1.5rem;
+            }
+
+            .auth-container h1 {
+                font-size: 1.3rem;
+            }
+
+            .logo-img {
+                height: 32px;
+            }
+
+            .logo-text {
+                font-size: 1.1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .auth-container {
+                padding: 1.25rem;
+                margin: 1rem 0.75rem;
+            }
+
+            .form-group input {
+                padding: 0.6rem 0.8rem;
+                font-size: 0.85rem;
+            }
+
+            .btn {
+                padding: 0.6rem 1rem;
+                font-size: 0.85rem;
+            }
         }
     </style>
 </head>
 <body>
+    <!-- НАВИГАЦИЯ КАК НА ГЛАВНОЙ -->
     <nav class="navbar">
         <a href="/" class="logo-link">
             <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
@@ -99,28 +303,29 @@
         </div>
     </nav>
 
+    <!-- ФОРМА ВХОДА -->
     <div class="auth-container">
         <h1>Вход в систему</h1>
-        
+
         <form id="login-form" onsubmit="login(event)">
             <div class="form-group">
                 <label for="username">Логин или Email</label>
                 <input type="text" id="username" required placeholder="Введите логин или email">
             </div>
-            
+
             <div class="form-group">
                 <label for="password">Пароль</label>
                 <input type="password" id="password" required placeholder="Введите пароль">
             </div>
-            
+
             <div id="message" class="message"></div>
-            
-            <button type="submit" class="btn btn-primary" style="width: 100%;">Войти</button>
+
+            <button type="submit" class="btn btn-primary">Войти</button>
         </form>
-        
+
         <div class="auth-footer">
-            <p>Нет аккаунта? <a href="/register_page">Зарегистрироваться</a></p>
-            <p class="admin-hint"></p>
+            <div>Нет аккаунта? <a href="/register_page">Зарегистрироваться</a></div>
+            <div class="admin-hint">Тестовые данные: admin / admin123</div>
         </div>
     </div>
 
@@ -137,31 +342,34 @@
         async function login(e) {
             e.preventDefault();
             const msgDiv = document.getElementById('message');
-            
+
             const username = document.getElementById('username').value.trim();
             const password = document.getElementById('password').value;
-            
+
+            // Скрываем предыдущее сообщение
+            msgDiv.style.display = 'none';
+
             if (!username || !password) {
                 msgDiv.className = 'message error';
                 msgDiv.textContent = 'Заполните все поля';
                 msgDiv.style.display = 'block';
                 return;
             }
-            
+
             try {
                 const response = await fetch('/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username: username, password: password })
                 });
-                
+
                 const data = await response.json();
-                
+
                 if (data.success) {
                     msgDiv.className = 'message success';
                     msgDiv.textContent = data.message;
                     msgDiv.style.display = 'block';
-                    
+
                     setTimeout(() => {
                         window.location.href = data.redirect || '/';
                     }, 1000);
