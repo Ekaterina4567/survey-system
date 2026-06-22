@@ -5,28 +5,126 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Детальный разбор теста - SurveySystem</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
+        /* Общие стили */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            background: #FDF8F0;
+            color: #3D2B1F;
+            line-height: 1.5;
+            font-size: 14px;
+            min-height: 100vh;
+        }
+
+        /* Навигация как на главной */
+        .navbar {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background: #FFFFFF;
+            padding: 0.8rem 2.5rem;
+            border-bottom: 1px solid #EDE3D8;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        }
+
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+            transition: opacity 0.2s ease;
+        }
+
+        .logo-link:hover {
+            opacity: 0.85;
+        }
+
+        .logo-img {
+            height: 38px;
+            width: auto;
+            display: block;
+            object-fit: contain;
+        }
+
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+            letter-spacing: -0.5px;
+        }
+
+        .nav-links {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .nav-links a {
+            padding: 0.5rem 1rem;
+            text-decoration: none;
+            color: #7A6B5D;
+            font-weight: 500;
+            font-size: 0.9rem;
+            transition: all 0.2s;
+            border-radius: 10px;
+        }
+
+        .nav-links a:hover {
+            color: #8B5E3C;
+            background: #F5EDE3;
+        }
+
+        .nav-links a.active {
+            color: #8B5E3C;
+            background: #F5EDE3;
+            font-weight: 600;
+        }
+
+        /* Карточка */
+        .card {
+            background: #FFFFFF;
+            border-radius: 20px;
+            padding: 2rem;
+            margin: 2rem auto;
+            border: 1px solid #E8DDD0;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+            max-width: 900px;
+        }
+
+        /* Результаты */
         .result-card {
             background: white;
-            border-radius: var(--radius-lg);
+            border-radius: 14px;
             padding: 1.5rem;
             margin-bottom: 1rem;
             border-left: 4px solid;
             transition: all 0.2s;
         }
         .result-card.correct {
-            border-left-color: var(--success);
-            background: linear-gradient(135deg, white 0%, var(--success-light) 100%);
+            border-left-color: #2E7D32;
+            background: linear-gradient(135deg, white 0%, #E8F5E9 100%);
         }
         .result-card.wrong {
-            border-left-color: var(--error);
-            background: linear-gradient(135deg, white 0%, var(--error-light) 100%);
+            border-left-color: #C62828;
+            background: linear-gradient(135deg, white 0%, #FFEBEE 100%);
         }
         .result-card .question-text {
             font-weight: 700;
             font-size: 1rem;
             margin-bottom: 1rem;
-            color: var(--text-primary);
+            color: #3D2B1F;
         }
         .result-card .answer-section {
             display: grid;
@@ -34,47 +132,47 @@
             gap: 1rem;
             margin-top: 0.75rem;
             padding-top: 0.75rem;
-            border-top: 1px solid var(--border-light);
+            border-top: 1px solid #EDE3D8;
         }
         .user-answer {
             background: white;
             padding: 0.75rem;
-            border-radius: var(--radius-sm);
+            border-radius: 10px;
         }
         .correct-answer {
-            background: var(--primary-soft);
+            background: #F5EDE3;
             padding: 0.75rem;
-            border-radius: var(--radius-sm);
+            border-radius: 10px;
         }
         .badge-correct {
-            background: var(--success);
+            background: #2E7D32;
             color: white;
             padding: 0.25rem 0.75rem;
-            border-radius: var(--radius-full);
+            border-radius: 9999px;
             font-size: 0.7rem;
             display: inline-block;
         }
         .badge-wrong {
-            background: var(--error);
+            background: #C62828;
             color: white;
             padding: 0.25rem 0.75rem;
-            border-radius: var(--radius-full);
+            border-radius: 9999px;
             font-size: 0.7rem;
             display: inline-block;
         }
         .points-badge {
-            background: var(--primary);
+            background: #8B5E3C;
             color: white;
             padding: 0.25rem 0.75rem;
-            border-radius: var(--radius-full);
+            border-radius: 9999px;
             font-size: 0.7rem;
             margin-left: 0.5rem;
         }
         .summary-stats {
-            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            background: linear-gradient(135deg, #8B5E3C 0%, #2C5F8A 100%);
             color: white;
             padding: 1.5rem;
-            border-radius: var(--radius-lg);
+            border-radius: 20px;
             margin-bottom: 2rem;
             text-align: center;
         }
@@ -86,16 +184,112 @@
             font-size: 2.5rem;
             font-weight: 800;
         }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 0.4rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: 10px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-family: inherit;
+        }
+        .btn-primary {
+            background: #8B5E3C;
+            color: white;
+        }
+        .btn-primary:hover {
+            background: #6B4226;
+        }
+        .btn-secondary {
+            background: #2C5F8A;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background: #1E4A6E;
+        }
+        .btn-outline {
+            background: transparent;
+            border: 1px solid #EDE3D8;
+            color: #3D2B1F;
+        }
+        .btn-outline:hover {
+            border-color: #8B5E3C;
+            color: #8B5E3C;
+            background: #F5EDE3;
+        }
+        .error-message {
+            text-align: center;
+            padding: 2rem;
+        }
+        .error-message p {
+            margin-bottom: 1rem;
+            color: #7A6B5D;
+        }
+
         @media (max-width: 768px) {
+            .navbar {
+                flex-direction: column;
+                padding: 0.8rem 1rem;
+                gap: 0.75rem;
+            }
+            .nav-links {
+                flex-wrap: wrap;
+                justify-content: center;
+                gap: 0.5rem;
+            }
+            .nav-links a {
+                padding: 0.4rem 0.75rem;
+                font-size: 0.8rem;
+            }
+            .card {
+                padding: 1.25rem;
+                margin: 1rem;
+            }
             .result-card .answer-section {
                 grid-template-columns: 1fr;
+            }
+            .summary-stats h1 {
+                font-size: 1.4rem;
+            }
+            .summary-stats .score {
+                font-size: 2rem;
+            }
+            .logo-img {
+                height: 32px;
+            }
+            .logo-text {
+                font-size: 1.1rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .card {
+                padding: 1rem;
+                margin: 0.75rem;
+            }
+            .result-card {
+                padding: 1rem;
+            }
+            .btn {
+                padding: 0.5rem 0.8rem;
+                font-size: 0.8rem;
             }
         }
     </style>
 </head>
 <body>
+    <!-- НАВИГАЦИЯ КАК НА ГЛАВНОЙ -->
     <nav class="navbar">
-        <div class="nav-brand">📋 SurveySystem</div>
+        <a href="/" class="logo-link">
+            <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
+            <span class="logo-text">SurveySystem</span>
+        </a>
         <div class="nav-links">
             <a href="/">Главная</a>
             <a href="/student_dashboard">Мои результаты</a>
@@ -105,16 +299,24 @@
         </div>
     </nav>
 
-    <div class="card" style="max-width: 900px; margin: 2rem auto;">
+    <!-- КОНТЕНТ -->
+    <div class="card">
         <div id="content-container">
             <div style="text-align: center; padding: 3rem;">
-                <div class="loading-spinner">📊 Загрузка результатов...</div>
+                <div style="display: inline-block; width: 40px; height: 40px; border: 4px solid #F5EDE3; border-top-color: #8B5E3C; border-radius: 50%; animation: spin 1s linear infinite; margin-bottom: 1rem;"></div>
+                <p style="color: #7A6B5D;">Загрузка результатов...</p>
             </div>
         </div>
     </div>
 
+    <style>
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+
     <script>
-        // Получаем ID из URL или из data-атрибута
+        // Получаем ID из URL
         var resultId = null;
         var pathParts = window.location.pathname.split('/');
         for (var i = 0; i < pathParts.length; i++) {
@@ -125,19 +327,13 @@
                 break;
             }
         }
-        
-        // Если не нашли в URL, пробуем через переменную из шаблона (безопасно)
-        var templateResultId = parseInt('{{ result_id }}');
-        if (!isNaN(templateResultId) && templateResultId > 0) {
-            resultId = templateResultId;
-        }
 
         async function loadResultDetail() {
             if (!resultId) {
                 document.getElementById('content-container').innerHTML = `
                     <div class="error-message">
                         <p>Ошибка: ID результата не указан</p>
-                        <a href="/student_dashboard" class="btn btn-primary">⬅ Назад</a>
+                        <a href="/student_dashboard" class="btn btn-primary">Назад</a>
                     </div>
                 `;
                 return;
@@ -151,7 +347,7 @@
                     document.getElementById('content-container').innerHTML = `
                         <div class="error-message">
                             <p>${data.error || 'Ошибка загрузки'}</p>
-                            <a href="/student_dashboard" class="btn btn-primary">⬅ Назад</a>
+                            <a href="/student_dashboard" class="btn btn-primary">Назад</a>
                         </div>
                     `;
                     return;
@@ -164,16 +360,16 @@
                 
                 let html = `
                     <div class="summary-stats">
-                        <h1>📊 ${escapeHtml(result.title)}</h1>
+                        <h1>${escapeHtml(result.title)}</h1>
                         <div class="score">${result.score} / ${result.max_score}</div>
                         <div style="font-size: 1.2rem;">${percentage}% • ${correctCount} из ${details.length} правильных ответов</div>
-                        <div style="margin-top: 1rem;">📅 ${new Date(result.completed_at).toLocaleString()}</div>
+                        <div style="margin-top: 1rem; font-size: 0.85rem; opacity: 0.8;">${new Date(result.completed_at).toLocaleString()}</div>
                     </div>
-                    <div style="margin-bottom: 1.5rem;">
-                        <a href="/student_dashboard" class="btn btn-secondary">⬅ Назад к результатам</a>
-                        <button onclick="window.print()" class="btn btn-outline">🖨 Распечатать</button>
+                    <div style="margin-bottom: 1.5rem; display: flex; gap: 0.75rem; flex-wrap: wrap;">
+                        <a href="/student_dashboard" class="btn btn-secondary">Назад к результатам</a>
+                        <button onclick="window.print()" class="btn btn-outline">Распечатать</button>
                     </div>
-                    <h2 style="margin-bottom: 1rem;">📝 Детальный разбор ответов</h2>
+                    <h2 style="margin-bottom: 1rem; font-size: 1.2rem;">Детальный разбор ответов</h2>
                 `;
                 
                 for (var i = 0; i < details.length; i++) {
@@ -181,9 +377,9 @@
                     const isCorrect = detail.is_correct;
                     html += `
                         <div class="result-card ${isCorrect ? 'correct' : 'wrong'}">
-                            <div>
+                            <div style="margin-bottom: 0.75rem;">
                                 <span class="${isCorrect ? 'badge-correct' : 'badge-wrong'}">
-                                    ${isCorrect ? '✅ Верно' : '❌ Неверно'}
+                                    ${isCorrect ? 'Верно' : 'Неверно'}
                                 </span>
                                 <span class="points-badge">${detail.points_earned} / ${detail.points} баллов</span>
                             </div>
@@ -192,11 +388,11 @@
                             </div>
                             <div class="answer-section">
                                 <div class="user-answer">
-                                    <strong>📝 Ваш ответ:</strong><br>
+                                    <strong style="font-size: 0.8rem;">Ваш ответ:</strong><br>
                                     ${formatAnswer(detail.user_answer, detail.question_type)}
                                 </div>
                                 <div class="correct-answer">
-                                    <strong>✅ Правильный ответ:</strong><br>
+                                    <strong style="font-size: 0.8rem;">Правильный ответ:</strong><br>
                                     ${formatAnswer(detail.correct_answer, detail.question_type)}
                                 </div>
                             </div>
@@ -211,7 +407,7 @@
                 document.getElementById('content-container').innerHTML = `
                     <div class="error-message">
                         <p>Ошибка загрузки результатов</p>
-                        <a href="/student_dashboard" class="btn btn-primary">⬅ Назад</a>
+                        <a href="/student_dashboard" class="btn btn-primary">Назад</a>
                     </div>
                 `;
             }
@@ -219,7 +415,7 @@
         
         function formatAnswer(answer, type) {
             if (!answer || answer === '(не указан)') {
-                return '<span style="color: var(--text-muted);">(не указан)</span>';
+                return '<span style="color: #B8A99A;">(не указан)</span>';
             }
             if (type === 'checkbox') {
                 const answers = answer.split(',');
