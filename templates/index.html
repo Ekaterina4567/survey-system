@@ -8,53 +8,35 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 </head>
 <body>
-    <!-- НАВИГАЦИЯ С ЛОГОТИПОМ И НАЗВАНИЕМ -->
     <nav class="navbar">
         <a href="/" class="logo-link">
             <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
             <span class="logo-text">SurveySystem</span>
         </a>
         <div class="nav-links" id="nav-links">
-            <a href="/" class="active">Главная</a>
-            <a href="/login_page">Вход</a>
-            <a href="/register_page">Регистрация</a>
+            <!-- Ссылки будут загружены динамически -->
         </div>
     </nav>
 
-    <!-- HERO СЕКЦИЯ -->
     <main class="hero-wrapper">
-        <!-- ЛЕВАЯ ЧАСТЬ: Текст -->
         <div class="hero-content fade-in">
-            <div class="badge"></div>
+            <div class="badge" id="user-greeting">Online Testing</div>
             <h1>Создавайте тесты <br>и <span class="highlight">получайте знания</span></h1>
             <p>
                 Создавайте интерактивные опросы, проходите тесты и получайте мгновенные результаты. 
                 Вся статистика сохраняется в вашем личном кабинете.
             </p>
             <div class="hero-buttons">
-                <a href="/take_test" class="btn btn-primary">📝 Пройти тест</a>
-                <a href="/create_test_page" class="btn btn-outline">✨ Создать тест</a>
-            </div>
-            
-            <!-- Мини-статистика под текстом -->
-            <div class="hero-stats">
-                <div class="h-stat">
-                  
-                </div>
-                <div class="h-stat">
-                    
-                </div>
+                <a href="/take_test" class="btn btn-primary">Пройти тест</a>
+                <a href="/create_test_page" class="btn btn-outline">Создать тест</a>
             </div>
         </div>
 
-        <!-- ПРАВАЯ ЧАСТЬ: Иллюстрация с логотипом ВНУТРИ круга -->
         <div class="hero-visual fade-in">
-            <!-- Фоновый круг (Луна) с логотипом внутри -->
             <div class="big-moon">
                 <img src="/static/Logo.svg" alt="SurveySystem Logo" class="moon-logo">
             </div>
             
-            <!-- Плавающие элементы вокруг круга -->
             <div class="float-card card-1">
                 <div class="card-line"></div>
                 <div class="card-check">✓</div>
@@ -70,17 +52,15 @@
                 <div class="card-line short"></div>
             </div>
             
-            <!-- Декоративные точки -->
             <div class="dot dot-1"></div>
             <div class="dot dot-2"></div>
             <div class="dot dot-3"></div>
         </div>
     </main>
 
-    <!-- БЛОК ПРЕИМУЩЕСТВ -->
     <section class="features-section">
         <div class="feature-card">
-            <div class="feature-icon">🎓</div>
+            <div class="feature-icon">📘</div>
             <h3>Для студентов</h3>
             <p>Проходите тесты по коду или QR-коду. Вся история результатов сохраняется.</p>
         </div>
@@ -96,9 +76,7 @@
         </div>
     </section>
 
-   
     <style>
-        /* Дополнительные стили */
         .navbar {
             display: flex;
             justify-content: space-between;
@@ -125,14 +103,14 @@
         }
 
         .logo-img {
-            height: 40px;
+            height: 38px;
             width: auto;
             display: block;
             object-fit: contain;
         }
 
         .logo-text {
-            font-size: 1.4rem;
+            font-size: 1.3rem;
             font-weight: 700;
             background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
             -webkit-background-clip: text;
@@ -141,7 +119,6 @@
             letter-spacing: -0.5px;
         }
 
-        /* Hero-секция */
         .hero-wrapper {
             display: grid;
             grid-template-columns: 1fr 0.9fr;
@@ -189,25 +166,6 @@
             flex-wrap: wrap;
         }
 
-        .hero-stats {
-            display: flex;
-            gap: 2rem;
-            margin-top: 2rem;
-        }
-
-        .h-stat strong {
-            font-size: 1.5rem;
-            font-weight: 800;
-            color: var(--primary);
-            display: block;
-        }
-
-        .h-stat span {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-        }
-
-        /* Правая иллюстрация */
         .hero-visual {
             position: relative;
             min-height: 400px;
@@ -228,7 +186,6 @@
             justify-content: center;
         }
 
-        /* Логотип внутри круга */
         .moon-logo {
             width: 130px;
             height: auto;
@@ -324,7 +281,6 @@
             right: 25%;
         }
 
-        /* Features */
         .features-section {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
@@ -363,31 +319,6 @@
             color: var(--text-secondary);
         }
 
-        /* Stats banner */
-        .stats-banner {
-            display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 2rem;
-            max-width: 1000px;
-            margin: 2rem auto;
-            padding: 2rem;
-            background: var(--primary-soft);
-            border-radius: var(--radius-xl);
-            text-align: center;
-        }
-
-        .stat-number {
-            font-size: 2rem;
-            font-weight: 800;
-            color: var(--primary);
-        }
-
-        .stat-label {
-            font-size: 0.8rem;
-            color: var(--text-secondary);
-        }
-
-        /* Анимации */
         @keyframes fadeIn {
             from { opacity: 0; transform: translateY(10px); }
             to { opacity: 1; transform: translateY(0); }
@@ -397,7 +328,6 @@
             animation: fadeIn 0.5s ease-out;
         }
 
-        /* Мобильная адаптация */
         @media (max-width: 900px) {
             .hero-wrapper {
                 grid-template-columns: 1fr;
@@ -406,10 +336,6 @@
 
             .hero-content h1 {
                 font-size: 2.2rem;
-            }
-
-            .hero-stats {
-                justify-content: center;
             }
 
             .hero-visual {
@@ -426,11 +352,6 @@
             }
 
             .features-section {
-                grid-template-columns: 1fr;
-                gap: 1rem;
-            }
-
-            .stats-banner {
                 grid-template-columns: 1fr;
                 gap: 1rem;
             }
@@ -461,14 +382,19 @@
     </style>
 
     <script>
-        // Динамическая загрузка навигации
         async function loadNav() {
             try {
                 const response = await fetch('/check_auth');
                 const data = await response.json();
                 const navLinks = document.getElementById('nav-links');
+                const greeting = document.getElementById('user-greeting');
                 
                 if (data.authenticated) {
+                    const displayName = data.full_name || data.username || 'Пользователь';
+                    greeting.textContent = `Добро пожаловать, ${displayName}!`;
+                    greeting.style.background = 'var(--success-light)';
+                    greeting.style.color = 'var(--success)';
+                    
                     navLinks.innerHTML = `
                         <a href="/">Главная</a>
                         <a href="/student_dashboard">Мои результаты</a>
@@ -477,6 +403,10 @@
                         <a href="#" onclick="logout()">Выход</a>
                     `;
                 } else {
+                    greeting.textContent = 'Online Testing';
+                    greeting.style.background = 'var(--primary-soft)';
+                    greeting.style.color = 'var(--primary)';
+                    
                     navLinks.innerHTML = `
                         <a href="/" class="active">Главная</a>
                         <a href="/login_page">Вход</a>
