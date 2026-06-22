@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Создание теста - SurveySystem</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         .option-item {
             display: flex;
@@ -66,16 +67,40 @@
             color: var(--text-muted);
             margin-top: 0.25rem;
         }
+        /* Стили для логотипа как на главной */
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        .logo-link:hover {
+            opacity: 0.85;
+        }
+        .logo-img {
+            height: 38px;
+            width: auto;
+            display: block;
+            object-fit: contain;
+        }
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
     </style>
 </head>
 <body>
-    <<nav class="navbar">
-    <a href="/" class="logo-link">
-        <img src="/static/logo.png" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
-        <span class="logo-text">SurveySystem</span>
-    </a>
-    <div class="nav-links" id="navLinks"></div>
-</nav>
+    <nav class="navbar">
+        <a href="/" class="logo-link">
+            <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
+            <span class="logo-text">SurveySystem</span>
+        </a>
+        <div class="nav-links" id="navLinks"></div>
+    </nav>
 
     <div class="admin-header">
         <h1>📝 Создание теста</h1>
