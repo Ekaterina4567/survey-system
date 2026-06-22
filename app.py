@@ -283,7 +283,7 @@ def register():
         
         return jsonify({
             'success': True, 
-            'message': 'Registration successful!',
+            'message': 'Регистрация прошла успешно!',
             'user_id': user_id,
             'redirect_url': redirect_url or '/'
         })
@@ -327,7 +327,7 @@ def login():
         
         return jsonify({
             'success': True, 
-            'message': 'Login successful!',
+            'message': 'Вход выполнен успешно!',
             'role': user['role'],
             'redirect': redirect_url
         })
