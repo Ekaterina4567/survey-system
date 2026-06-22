@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Редактирование теста - SurveySystem</title>
     <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         .option-item {
             display: flex;
@@ -43,26 +44,126 @@
             color: var(--text-muted);
             margin-top: 0.25rem;
         }
+        .logo-link {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            text-decoration: none;
+        }
+        .logo-link:hover {
+            opacity: 0.85;
+        }
+        .logo-img {
+            height: 38px;
+            width: auto;
+            display: block;
+            object-fit: contain;
+        }
+        .logo-text {
+            font-size: 1.3rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+        /* Убираем эмодзи */
+        .btn-add, .btn-remove, .btn-primary, .btn-secondary {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+        .admin-header h1, .admin-header p {
+            color: var(--text-primary);
+        }
+        .form-group label {
+            font-weight: 500;
+        }
+        .question-number-badge {
+            font-weight: 600;
+            color: var(--primary);
+            font-size: 0.85rem;
+            background: var(--bg-white);
+            padding: 0.25rem 0.75rem;
+            border-radius: var(--radius-full);
+        }
+        .btn-remove {
+            background: transparent;
+            border: 1px solid var(--error-light);
+            color: var(--error);
+            padding: 0.4rem 1rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .btn-remove:hover {
+            background: var(--error-light);
+        }
+        .btn-add {
+            background: var(--primary-soft);
+            color: var(--primary);
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .btn-add:hover {
+            background: var(--primary-light);
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: var(--text-light);
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+        }
+        .btn-primary:hover {
+            background: var(--primary-dark);
+        }
+        .btn-secondary {
+            background: var(--secondary);
+            color: var(--text-light);
+            border: none;
+            padding: 0.6rem 1.2rem;
+            border-radius: var(--radius-sm);
+            cursor: pointer;
+            text-decoration: none;
+        }
+        .btn-secondary:hover {
+            background: #1E4A6E;
+        }
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.6rem 1.2rem;
+            border-radius: var(--radius-sm);
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.9rem;
+        }
     </style>
 </head>
 <body>
     <nav class="navbar">
-    <a href="/" class="logo-link">
-        <img src="/static/logo.png" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
-        <span class="logo-text">SurveySystem</span>
-    </a>
-    <div class="nav-links">
-        <a href="/">Главная</a>
-        <a href="/student_dashboard">Мои результаты</a>
-        <a href="/take_test">Пройти тест</a>
-        <a href="/create_test_page">Создать тест</a>
-        <a href="#" onclick="logout()">Выход</a>
-    </div>
-</nav>
+        <a href="/" class="logo-link">
+            <img src="/static/Logo.svg" alt="SurveySystem Logo" class="logo-img" onerror="this.style.display='none'">
+            <span class="logo-text">SurveySystem</span>
+        </a>
+        <div class="nav-links">
+            <a href="/">Главная</a>
+            <a href="/student_dashboard">Мои результаты</a>
+            <a href="/take_test">Пройти тест</a>
+            <a href="/create_test_page">Создать тест</a>
+            <a href="#" onclick="logout()">Выход</a>
+        </div>
     </nav>
 
     <div class="admin-header">
-        <h1>✏️ Редактирование теста</h1>
+        <h1>Редактирование теста</h1>
         <p>Измените вопросы, варианты ответов или правильные ответы</p>
     </div>
 
@@ -74,10 +175,10 @@
         
         <div id="questions-container"></div>
         
-        <div style="display: flex; gap: 1rem; margin-top: 1rem;">
-            <button class="btn btn-add" onclick="addQuestion()">➕ Добавить вопрос</button>
-            <button class="btn btn-primary" onclick="updateTest()">💾 Сохранить изменения</button>
-            <a href="/student_dashboard" class="btn btn-secondary">⬅ Назад</a>
+        <div style="display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap;">
+            <button class="btn btn-add" onclick="addQuestion()">+ Добавить вопрос</button>
+            <button class="btn btn-primary" onclick="updateTest()">Сохранить изменения</button>
+            <a href="/student_dashboard" class="btn btn-secondary">Назад</a>
         </div>
     </div>
 
@@ -130,7 +231,7 @@
                 textAnswerHtml = `
                     <div class="text-answer-container" id="text-${id}" style="display: block;">
                         <div class="form-group">
-                            <label>📝 Правильный текстовый ответ</label>
+                            <label>Правильный текстовый ответ</label>
                             <input type="text" class="text-correct-answer" value="${escapeHtml(q.correct_answer || '')}" style="width: 100%; padding: 0.75rem;">
                             <div class="help-text">Студент должен будет ввести этот ответ точно (регистр не важен)</div>
                         </div>
@@ -149,9 +250,9 @@
                             <input type="text" class="opt-text" value="${escapeHtml(opt)}" style="flex: 1;">
                             <label class="correct-label">
                                 <input type="${q.question_type === 'choice' ? 'radio' : 'checkbox'}" class="opt-correct" name="correct_${id}" ${isChecked ? 'checked' : ''}>
-                                ✅ Правильный
+                                Правильный
                             </label>
-                            <button type="button" class="btn-remove" onclick="this.parentElement.remove()">🗑</button>
+                            <button type="button" class="btn-remove" onclick="this.parentElement.remove()">Удалить</button>
                         </div>
                     `;
                 }
@@ -159,7 +260,7 @@
                     <div class="options-container" id="opt-${id}" style="display: block;">
                         <label>Варианты ответов</label>
                         <div class="options-list">${optsHtml}</div>
-                        <button type="button" class="btn-add" onclick="addOption('${id}')">➕ Добавить вариант</button>
+                        <button type="button" class="btn-add" onclick="addOption('${id}')">+ Добавить вариант</button>
                     </div>
                 `;
                 textAnswerHtml = `<div class="text-answer-container" id="text-${id}" style="display: none;"></div>`;
@@ -169,7 +270,7 @@
                 <div class="question-block" id="${id}">
                     <div class="question-header" style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
                         <span class="question-number-badge">Вопрос ${questionNumber}</span>
-                        <button class="btn-remove" onclick="document.getElementById('${id}').remove(); renumberQuestions()">🗑 Удалить</button>
+                        <button class="btn-remove" onclick="document.getElementById('${id}').remove(); renumberQuestions()">Удалить</button>
                     </div>
                     <div class="form-group">
                         <label>Текст вопроса</label>
@@ -178,15 +279,15 @@
                     <div class="form-group">
                         <label>Тип вопроса</label>
                         <select class="q-type" onchange="toggleOptions('${id}', this.value)" style="width: 100%; padding: 0.75rem;">
-                            <option value="choice" ${q.question_type === 'choice' ? 'selected' : ''}>🔘 Один вариант (автопроверка)</option>
-                            <option value="checkbox" ${q.question_type === 'checkbox' ? 'selected' : ''}>☑️ Несколько вариантов (автопроверка)</option>
-                            <option value="text" ${q.question_type === 'text' ? 'selected' : ''}>📝 Текстовый ответ (автопроверка)</option>
+                            <option value="choice" ${q.question_type === 'choice' ? 'selected' : ''}>Один вариант (автопроверка)</option>
+                            <option value="checkbox" ${q.question_type === 'checkbox' ? 'selected' : ''}>Несколько вариантов (автопроверка)</option>
+                            <option value="text" ${q.question_type === 'text' ? 'selected' : ''}>Текстовый ответ (автопроверка)</option>
                         </select>
                     </div>
                     ${optionsHtml}
                     ${textAnswerHtml}
                     <div class="form-group" style="margin-top: 1rem;">
-                        <label>⭐ Баллы за вопрос</label>
+                        <label>Баллы за вопрос</label>
                         <input type="number" class="q-points" value="${q.points}" min="1" style="width: 100px;">
                     </div>
                 </div>
@@ -204,7 +305,7 @@
                 <div class="question-block" id="${id}">
                     <div class="question-header" style="display: flex; justify-content: space-between; margin-bottom: 1rem;">
                         <span class="question-number-badge">Вопрос ${questionNumber}</span>
-                        <button class="btn-remove" onclick="document.getElementById('${id}').remove(); renumberQuestions()">🗑 Удалить</button>
+                        <button class="btn-remove" onclick="document.getElementById('${id}').remove(); renumberQuestions()">Удалить</button>
                     </div>
                     <div class="form-group">
                         <label>Текст вопроса</label>
@@ -213,25 +314,25 @@
                     <div class="form-group">
                         <label>Тип вопроса</label>
                         <select class="q-type" onchange="toggleOptions('${id}', this.value)" style="width: 100%; padding: 0.75rem;">
-                            <option value="choice">🔘 Один вариант (автопроверка)</option>
-                            <option value="checkbox">☑️ Несколько вариантов (автопроверка)</option>
-                            <option value="text">📝 Текстовый ответ (автопроверка)</option>
+                            <option value="choice">Один вариант (автопроверка)</option>
+                            <option value="checkbox">Несколько вариантов (автопроверка)</option>
+                            <option value="text">Текстовый ответ (автопроверка)</option>
                         </select>
                     </div>
                     <div class="options-container" id="opt-${id}" style="display: block;">
                         <label>Варианты ответов</label>
                         <div class="options-list"></div>
-                        <button type="button" class="btn-add" onclick="addOption('${id}')">➕ Добавить вариант</button>
+                        <button type="button" class="btn-add" onclick="addOption('${id}')">+ Добавить вариант</button>
                     </div>
                     <div class="text-answer-container" id="text-${id}" style="display: none;">
                         <div class="form-group">
-                            <label>📝 Правильный текстовый ответ</label>
+                            <label>Правильный текстовый ответ</label>
                             <input type="text" class="text-correct-answer" placeholder="Введите правильный ответ">
                             <div class="help-text">Студент должен будет ввести этот ответ точно (регистр не важен)</div>
                         </div>
                     </div>
                     <div class="form-group" style="margin-top: 1rem;">
-                        <label>⭐ Баллы за вопрос</label>
+                        <label>Баллы за вопрос</label>
                         <input type="number" class="q-points" value="1" min="1" style="width: 100px;">
                     </div>
                 </div>
@@ -249,9 +350,9 @@
                     <input type="text" class="opt-text" placeholder="Вариант ответа" style="flex: 1;">
                     <label class="correct-label">
                         <input type="${qType === 'choice' ? 'radio' : 'checkbox'}" class="opt-correct" name="${radioName}">
-                        ✅ Правильный
+                        Правильный
                     </label>
-                    <button type="button" class="btn-remove" onclick="this.parentElement.remove()">🗑</button>
+                    <button type="button" class="btn-remove" onclick="this.parentElement.remove()">Удалить</button>
                 </div>
             `;
             container.insertAdjacentHTML('beforeend', html);
@@ -359,7 +460,7 @@
                 });
                 const data = await response.json();
                 if (data.success) {
-                    alert('✅ Тест успешно обновлен!');
+                    alert('Тест успешно обновлен!');
                     window.location.href = '/student_dashboard';
                 } else {
                     alert('Ошибка: ' + data.error);
