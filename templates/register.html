@@ -6,6 +6,75 @@
     <title>Регистрация - SurveySystem</title>
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .auth-container {
+            max-width: 440px;
+            margin: 2rem auto;
+            padding: 2rem 2.5rem;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .auth-container h1 {
+            font-size: 1.6rem;
+            margin-bottom: 1.25rem;
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        .auth-container .form-group {
+            margin-bottom: 0.9rem;
+        }
+        
+        .auth-container .form-group label {
+            font-size: 0.85rem;
+            margin-bottom: 0.25rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        .auth-container .form-group input {
+            padding: 0.6rem 0.9rem;
+            font-size: 0.9rem;
+            border-radius: var(--radius-sm);
+        }
+        
+        .auth-container .btn {
+            padding: 0.6rem 1.2rem;
+            font-size: 0.9rem;
+        }
+        
+        .auth-footer {
+            margin-top: 1.25rem;
+            padding-top: 1rem;
+            font-size: 0.85rem;
+        }
+        
+        .message {
+            padding: 0.6rem 0.8rem;
+            font-size: 0.85rem;
+            margin-bottom: 0.8rem;
+        }
+        
+        .navbar {
+            padding: 0.8rem 2.5rem;
+        }
+        
+        .logo-img {
+            height: 38px;
+        }
+        
+        .logo-text {
+            font-size: 1.3rem;
+        }
+        
+        .nav-links a {
+            padding: 0.45rem 1rem;
+            font-size: 0.85rem;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -21,12 +90,7 @@
     </nav>
 
     <div class="auth-container">
-        <h1>📝 Регистрация</h1>
-        
-        <div class="auth-tabs">
-            <button class="auth-tab active" onclick="switchRole('student')">🎓 Студент</button>
-            <button class="auth-tab" onclick="switchRole('teacher')">👨‍🏫 Преподаватель</button>
-        </div>
+        <h1>Регистрация</h1>
 
         <form id="register-form" onsubmit="register(event)">
             <div class="form-group">
@@ -65,12 +129,13 @@
     </div>
 
     <script>
-        let selectedRole = 'student';
-
-        function switchRole(role) {
-            selectedRole = role;
-            document.querySelectorAll('.auth-tab').forEach(tab => tab.classList.remove('active'));
-            event.target.classList.add('active');
+        // Получаем параметры из URL
+        function getQueryParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                redirect: params.get('redirect'),
+                code: params.get('code')
+            };
         }
 
         async function register(e) {
@@ -104,8 +169,15 @@
                 return;
             }
 
+            // Определяем URL для перенаправления после регистрации
+            const params = getQueryParams();
+            let redirectUrl = '/';
+            if (params.redirect && params.code) {
+                redirectUrl = `/${params.redirect}?code=${params.code}`;
+            }
+
             try {
-                const response = await fetch('/register', {
+                const registerResponse = await fetch('/register', {
                     method: 'POST',
                     headers: {'Content-Type': 'application/json'},
                     body: JSON.stringify({
@@ -113,24 +185,29 @@
                         email: email,
                         full_name: fullName,
                         password: password,
-                        role: selectedRole
+                        role: 'student',
+                        redirect_url: redirectUrl  // Передаем URL для перенаправления
                     })
                 });
 
-                const data = await response.json();
+                const registerData = await registerResponse.json();
                 
-                if (data.success) {
-                    msg.className = 'message success';
-                    msg.textContent = data.message;
-                    msg.style.display = 'block';
-                    setTimeout(() => {
-                        window.location.href = '/login_page';
-                    }, 2000);
-                } else {
+                if (!registerData.success) {
                     msg.className = 'message error';
-                    msg.textContent = data.error || 'Ошибка регистрации';
+                    msg.textContent = registerData.error || 'Ошибка регистрации';
                     msg.style.display = 'block';
+                    return;
                 }
+
+                msg.className = 'message success';
+                msg.textContent = 'Регистрация успешна! Перенаправление...';
+                msg.style.display = 'block';
+                
+                // Перенаправляем на нужную страницу
+                setTimeout(() => {
+                    window.location.href = registerData.redirect_url || '/';
+                }, 1000);
+
             } catch (error) {
                 msg.className = 'message error';
                 msg.textContent = 'Ошибка подключения к серверу';
