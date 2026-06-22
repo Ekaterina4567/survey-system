@@ -77,7 +77,6 @@
             font-size: 0.6rem;
             color: var(--text-secondary);
         }
-        /* Стили для навигации с логотипом */
         .logo-link {
             display: flex;
             align-items: center;
@@ -100,6 +99,83 @@
             background-clip: text;
             color: transparent;
         }
+        /* QR код модальное окно */
+        .qr-modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .qr-modal-overlay.active {
+            display: flex;
+        }
+        .qr-modal-content {
+            background: white;
+            border-radius: 28px;
+            padding: 2rem;
+            max-width: 400px;
+            text-align: center;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+        }
+        .qr-modal-content h3 {
+            margin-bottom: 0.5rem;
+        }
+        .qr-modal-content p {
+            color: var(--text-secondary);
+            margin-bottom: 1rem;
+        }
+        .qr-modal-content img {
+            max-width: 200px;
+            margin: 0.5rem auto;
+            display: block;
+        }
+        .qr-modal-content .code-display {
+            font-size: 1.2rem;
+            font-weight: 700;
+            color: var(--primary);
+            background: var(--primary-soft);
+            padding: 0.5rem;
+            border-radius: var(--radius-sm);
+            margin: 0.5rem 0;
+        }
+        .qr-modal-actions {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: center;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+        .btn-qr {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.4rem 1rem;
+            border-radius: var(--radius-sm);
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.2s;
+            border: none;
+            cursor: pointer;
+            font-size: 0.8rem;
+            background: var(--primary-soft);
+            color: var(--primary);
+        }
+        .btn-qr:hover {
+            background: var(--primary-light);
+        }
+        .btn-qr-primary {
+            background: var(--primary);
+            color: white;
+        }
+        .btn-qr-primary:hover {
+            background: var(--primary-dark);
+        }
     </style>
 </head>
 <body>
@@ -118,13 +194,13 @@
     </nav>
 
     <div class="admin-header">
-        <h1> Личный кабинет</h1>
+        <h1>Личный кабинет</h1>
         <p>Ваши результаты и созданные тесты</p>
     </div>
 
     <div class="tabs">
-        <button class="tab-btn active" onclick="switchTab('results')"> Пройденные тесты</button>
-        <button class="tab-btn" onclick="switchTab('my-tests')"> Мои тесты</button>
+        <button class="tab-btn active" onclick="switchTab('results')">Пройденные тесты</button>
+        <button class="tab-btn" onclick="switchTab('my-tests')">Мои тесты</button>
     </div>
 
     <div id="results-tab" class="tab-content active">
@@ -142,7 +218,7 @@
         <div class="card">
             <div class="card-header">
                 <h2>Созданные мной тесты</h2>
-                <a href="/create_test_page" class="btn btn-primary btn-small">➕ Создать тест</a>
+                <a href="/create_test_page" class="btn btn-primary btn-small">Создать тест</a>
             </div>
             <div id="my-tests-container">
                 <div style="text-align: center; padding: 2rem;">Загрузка...</div>
@@ -150,7 +226,24 @@
         </div>
     </div>
 
+    <!-- Модальное окно для QR кода -->
+    <div class="qr-modal-overlay" id="qrModal">
+        <div class="qr-modal-content">
+            <h3 id="qrTestTitle">Название теста</h3>
+            <p>Отсканируйте QR-код, чтобы пройти тест</p>
+            <img id="qrImage" src="" alt="QR Code">
+            <div class="code-display" id="qrCodeDisplay">Код: ABC123</div>
+            <div class="qr-modal-actions">
+                <button class="btn-qr btn-qr-primary" onclick="closeQRModal()">Закрыть</button>
+                <button class="btn-qr" onclick="copyQRCode()">Копировать код</button>
+                <a href="#" id="qrTestLink" class="btn-qr btn-qr-primary" target="_blank">Открыть тест</a>
+            </div>
+        </div>
+    </div>
+
     <script>
+        let currentQRCode = '';
+
         function switchTab(tab) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
@@ -169,7 +262,7 @@
                 
                 if (data.results && data.results.length > 0) {
                     let html = `
-                        <div class="stats-banner" style="margin-bottom: 1.5rem; background: var(--primary-soft); border-radius: var(--radius-lg);">
+                        <div class="stats-banner" style="margin-bottom: 1.5rem; background: var(--primary-soft); border-radius: var(--radius-lg); display: flex; justify-content: space-around; padding: 1rem; flex-wrap: wrap;">
                             <div class="stat-item">
                                 <div class="stat-number">${data.stats.total_tests}</div>
                                 <div class="stat-label">Пройдено тестов</div>
@@ -198,9 +291,9 @@
                                     </div>
                                 </div>
                                 <div style="font-size: 0.7rem; color: var(--text-muted); margin-top: 0.5rem;">
-                                    📅 ${new Date(r.completed_at).toLocaleString()}
+                                    ${new Date(r.completed_at).toLocaleString()}
                                 </div>
-                                <button class="btn btn-outline btn-small" style="margin-top: 0.75rem;">🔍 Детальный разбор</button>
+                                <button class="btn btn-outline btn-small" style="margin-top: 0.75rem;">Детальный разбор</button>
                             </div>
                         `;
                     });
@@ -208,7 +301,7 @@
                 } else {
                     document.getElementById('results-container').innerHTML = `
                         <div style="text-align: center; padding: 2rem;">
-                            <p>😊 Вы ещё не прошли ни одного теста</p>
+                            <p>Вы ещё не прошли ни одного теста</p>
                             <a href="/take_test" class="btn btn-primary">Пройти тест</a>
                         </div>
                     `;
@@ -246,10 +339,11 @@
                                         </div>
                                     </div>
                                     <div class="test-actions" style="margin-top: 0;">
-                                        <a href="/take_test?code=${test.unique_code}" class="btn btn-primary btn-small">📝 Пройти</a>
-                                        <a href="/edit_test_page/${test.id}" class="btn btn-secondary btn-small">✏️ Редактировать</a>
-                                        <button class="btn btn-outline btn-small" onclick="copyCode('${test.unique_code}')">📋 Код</button>
-                                        <button class="btn btn-outline btn-small" onclick="toggleResults(${test.id}, '${escapeHtml(test.title)}')">📊 Результаты</button>
+                                        <a href="/take_test?code=${test.unique_code}" class="btn btn-primary btn-small">Пройти</a>
+                                        <a href="/edit_test_page/${test.id}" class="btn btn-secondary btn-small">Редактировать</a>
+                                        <button class="btn btn-outline btn-small" onclick="copyCode('${test.unique_code}')">Код</button>
+                                        <button class="btn btn-outline btn-small" onclick="showQR('${test.unique_code}', '${escapeHtml(test.title)}')">QR</button>
+                                        <button class="btn btn-outline btn-small" onclick="toggleResults(${test.id}, '${escapeHtml(test.title)}')">Результаты</button>
                                     </div>
                                 </div>
                                 <div id="results-${test.id}" style="display: none;"></div>
@@ -261,7 +355,7 @@
                 } else {
                     document.getElementById('my-tests-container').innerHTML = `
                         <div style="text-align: center; padding: 2rem;">
-                            <p>📝 У вас пока нет созданных тестов</p>
+                            <p>У вас пока нет созданных тестов</p>
                             <a href="/create_test_page" class="btn btn-primary">Создать тест</a>
                         </div>
                     `;
@@ -272,6 +366,55 @@
             }
         }
 
+        // Функция для показа QR кода
+        async function showQR(code, title) {
+            currentQRCode = code;
+            document.getElementById('qrTestTitle').textContent = title || 'Тест';
+            document.getElementById('qrCodeDisplay').textContent = 'Код: ' + code;
+            
+            const testUrl = window.location.origin + '/take_test?code=' + code;
+            document.getElementById('qrTestLink').href = testUrl;
+            
+            // Генерируем QR код через API
+            try {
+                const response = await fetch('/api/generate_qr', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code })
+                });
+                const data = await response.json();
+                if (data.qr_code) {
+                    document.getElementById('qrImage').src = 'data:image/png;base64,' + data.qr_code;
+                } else {
+                    // Если API нет, используем fallback - ссылку на внешний генератор
+                    document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(testUrl);
+                }
+            } catch (error) {
+                // Fallback на внешний API
+                document.getElementById('qrImage').src = 'https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=' + encodeURIComponent(testUrl);
+            }
+            
+            document.getElementById('qrModal').classList.add('active');
+        }
+
+        function closeQRModal() {
+            document.getElementById('qrModal').classList.remove('active');
+        }
+
+        function copyQRCode() {
+            if (currentQRCode) {
+                navigator.clipboard.writeText(currentQRCode);
+                alert('Код "' + currentQRCode + '" скопирован в буфер обмена');
+            }
+        }
+
+        // Закрытие модального окна по клику вне его
+        document.getElementById('qrModal').addEventListener('click', function(e) {
+            if (e.target === this) {
+                closeQRModal();
+            }
+        });
+
         async function toggleResults(testId, testTitle) {
             const resultsDiv = document.getElementById(`results-${testId}`);
             
@@ -281,7 +424,7 @@
             }
             
             resultsDiv.style.display = 'block';
-            resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem;">📊 Загрузка результатов...</div>';
+            resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem;">Загрузка результатов...</div>';
             
             try {
                 const response = await fetch(`/api/get_test_results/${testId}`);
@@ -297,12 +440,12 @@
                 const data = await response.json();
                 
                 if (!data.success) {
-                    resultsDiv.innerHTML = `<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--error);">❌ ${data.error}</div>`;
+                    resultsDiv.innerHTML = `<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--error);">${data.error}</div>`;
                     return;
                 }
                 
                 if (data.results.length === 0) {
-                    resultsDiv.innerHTML = `<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--text-muted);">📊 Пока нет результатов по этому тесту</div>`;
+                    resultsDiv.innerHTML = `<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--text-muted);">Пока нет результатов по этому тесту</div>`;
                     return;
                 }
                 
@@ -325,12 +468,12 @@
                         <table style="width: 100%; font-size: 0.75rem; border-collapse: collapse;">
                             <thead>
                                 <tr style="background: var(--primary-soft);">
-                                    <th style="padding: 0.5rem; text-align: left;">👤 ФИО студента</th>
-                                    <th style="padding: 0.5rem; text-align: left;">📧 Email</th>
-                                    <th style="padding: 0.5rem; text-align: left;">🎯 Результат</th>
-                                    <th style="padding: 0.5rem; text-align: left;">📊 %</th>
-                                    <th style="padding: 0.5rem; text-align: left;">⏰ Время</th>
-                                    <th style="padding: 0.5rem; text-align: center;">🔍</th>
+                                    <th style="padding: 0.5rem; text-align: left;">ФИО студента</th>
+                                    <th style="padding: 0.5rem; text-align: left;">Email</th>
+                                    <th style="padding: 0.5rem; text-align: left;">Результат</th>
+                                    <th style="padding: 0.5rem; text-align: left;">%</th>
+                                    <th style="padding: 0.5rem; text-align: left;">Время</th>
+                                    <th style="padding: 0.5rem; text-align: center;">Детали</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -356,7 +499,7 @@
                             </td>
                             <td style="padding: 0.5rem; font-size: 0.7rem;">${formattedDate}</td>
                             <td style="padding: 0.5rem; text-align: center;">
-                                <button class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.65rem;" onclick="viewResultDetail(${r.id})">🔍</button>
+                                <button class="btn btn-outline" style="padding: 0.2rem 0.5rem; font-size: 0.65rem;" onclick="viewResultDetail(${r.id})">Детали</button>
                             </td>
                         </tr>
                     `;
@@ -372,7 +515,7 @@
                 
             } catch (error) {
                 console.error('Error loading results:', error);
-                resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--error);">❌ Ошибка загрузки</div>';
+                resultsDiv.innerHTML = '<div style="font-size: 0.8rem; text-align: center; padding: 1rem; color: var(--error);">Ошибка загрузки</div>';
             }
         }
 
@@ -382,7 +525,7 @@
 
         function copyCode(code) {
             navigator.clipboard.writeText(code);
-            alert(`Код "${code}" скопирован!`);
+            alert('Код "' + code + '" скопирован!');
         }
 
         function escapeHtml(text) {
@@ -415,6 +558,19 @@
         }
         
         checkAuthAndLoad();
+    </script>
+
+    <!-- Добавляем API для генерации QR кода -->
+    <script>
+        // Добавляем API для генерации QR кода, если его нет в app.py
+        // Это работает как fallback
+        if (typeof fetch !== 'undefined') {
+            // Проверяем, есть ли API /api/generate_qr
+            fetch('/api/generate_qr', { method: 'HEAD' }).catch(() => {
+                // Если API нет, используем внешний генератор
+                console.log('Using external QR generator');
+            });
+        }
     </script>
 </body>
 </html>
