@@ -11,26 +11,29 @@ from flask import Flask, render_template, request, jsonify, session, redirect, u
 from dotenv import load_dotenv
 import psycopg2
 from psycopg2.extras import RealDictCursor
-from psycopg2.pool import SimpleConnectionPool
 
 load_dotenv()
 
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
+# PostgreSQL connection
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://survey_user:Fd25hZNEWtBryhp1j7b43xVVdgp7hz95@dpg-d8a7p66gvqtc73ck7c30-a.oregon-postgres.render.com/survey_db_ks4f')
 
 if '?' not in DATABASE_URL:
     DATABASE_URL += '?sslmode=require'
 
 def get_db():
+    """Get PostgreSQL connection"""
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
 def init_db():
+    """Initialize PostgreSQL database"""
     conn = get_db()
     cur = conn.cursor()
     
+    # Users table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -45,6 +48,7 @@ def init_db():
         )
     ''')
     
+    # Tests table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tests (
             id SERIAL PRIMARY KEY,
@@ -56,6 +60,7 @@ def init_db():
         )
     ''')
     
+    # Questions table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_questions (
             id SERIAL PRIMARY KEY,
@@ -69,6 +74,7 @@ def init_db():
         )
     ''')
     
+    # Results table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_results (
             id SERIAL PRIMARY KEY,
@@ -81,6 +87,7 @@ def init_db():
         )
     ''')
     
+    # Detailed answers table
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_answers_detail (
             id SERIAL PRIMARY KEY,
@@ -93,6 +100,7 @@ def init_db():
         )
     ''')
     
+    # Create test admin (password: admin123)
     admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
@@ -100,6 +108,7 @@ def init_db():
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
     ''', (admin_hash,))
     
+    # Create test teacher (password: teacher123)
     teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
@@ -107,6 +116,7 @@ def init_db():
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
     ''', (teacher_hash,))
     
+    # Create test student (password: student123)
     student_hash = hashlib.sha256("student123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
@@ -201,7 +211,6 @@ def edit_test_page(test_id):
 @app.route('/take_test')
 def take_test():
     if 'user_id' not in session:
-        # Сохраняем код теста в сессию для перенаправления после входа
         code = request.args.get('code')
         if code:
             session['redirect_after_login'] = f'/take_test?code={code}'
@@ -241,7 +250,7 @@ def register():
         password = data.get('password')
         full_name = data.get('full_name')
         role = data.get('role', 'student')
-        redirect_url = data.get('redirect_url')  # URL для перенаправления после регистрации
+        redirect_url = data.get('redirect_url')
         
         if not all([username, email, password]):
             return jsonify({'error': 'Fill in all required fields!'}), 400
@@ -266,7 +275,7 @@ def register():
         cur.close()
         conn.close()
         
-        # Автоматически входим после регистрации
+        # Auto-login after registration
         session['user_id'] = user_id
         session['username'] = username
         session['role'] = role
@@ -311,7 +320,7 @@ def login():
         session['role'] = user['role']
         session['full_name'] = user['full_name']
         
-        # Проверяем, есть ли сохраненный URL для перенаправления
+        # Check for saved redirect URL
         redirect_url = session.pop('redirect_after_login', None)
         if not redirect_url:
             redirect_url = '/student_dashboard'
@@ -380,7 +389,7 @@ def create_test():
         
         conn.commit()
         
-        # QR code generation
+        # Generate QR code
         qr_data = f"{request.host_url}take_test?code={code}"
         qr_img = qrcode.make(qr_data)
         buffered = io.BytesIO()
@@ -400,6 +409,45 @@ def create_test():
     
     except Exception as e:
         print(f"Error creating test: {e}")
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/generate_qr', methods=['POST'])
+def generate_qr():
+    """Generate QR code for a test by code"""
+    try:
+        data = request.json
+        code = data.get('code')
+        
+        if not code:
+            return jsonify({'error': 'Code is required'}), 400
+        
+        # Check if test exists
+        conn = get_db()
+        cur = conn.cursor()
+        cur.execute("SELECT id, title FROM tests WHERE unique_code = %s", (code.upper(),))
+        test = cur.fetchone()
+        cur.close()
+        conn.close()
+        
+        if not test:
+            return jsonify({'error': 'Test not found'}), 404
+        
+        # Generate QR code
+        qr_data = f"{request.host_url}take_test?code={code}"
+        qr_img = qrcode.make(qr_data)
+        buffered = io.BytesIO()
+        qr_img.save(buffered, format="PNG")
+        qr_base64 = base64.b64encode(buffered.getvalue()).decode()
+        
+        return jsonify({
+            'success': True,
+            'qr_code': qr_base64,
+            'code': code,
+            'title': test['title']
+        })
+    
+    except Exception as e:
+        print(f"Error generating QR: {e}")
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/get_test_by_code', methods=['POST'])
@@ -477,6 +525,7 @@ def submit_test():
         conn = get_db()
         cur = conn.cursor()
         
+        # Get test questions
         cur.execute('''
             SELECT id, correct_answer, question_type, points, question_text
             FROM test_questions WHERE test_id = %s
@@ -508,6 +557,7 @@ def submit_test():
                 'question_type': q['question_type']
             })
         
+        # Save result
         cur.execute('''
             INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json)
             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s) RETURNING id
@@ -515,6 +565,7 @@ def submit_test():
         
         result_id = cur.fetchone()['id']
         
+        # Save detailed answers
         for detail in detailed_results:
             cur.execute('''
                 INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
@@ -739,6 +790,7 @@ def get_test_results(test_id):
         conn = get_db()
         cur = conn.cursor()
         
+        # Check if user is the creator
         cur.execute('''
             SELECT created_by_user_id FROM tests WHERE id = %s
         ''', (test_id,))
@@ -750,6 +802,7 @@ def get_test_results(test_id):
         if test['created_by_user_id'] != session['user_id'] and session.get('role') != 'admin':
             return jsonify({'error': 'No permission to view results'}), 403
         
+        # Get results with student names
         cur.execute('''
             SELECT 
                 tr.id,
@@ -768,6 +821,7 @@ def get_test_results(test_id):
         
         results = cur.fetchall()
         
+        # Test statistics
         cur.execute('''
             SELECT 
                 COUNT(*) as total_attempts,
@@ -778,6 +832,7 @@ def get_test_results(test_id):
         ''', (test_id,))
         stats = cur.fetchone()
         
+        # Test info
         cur.execute('SELECT title FROM tests WHERE id = %s', (test_id,))
         test_info = cur.fetchone()
         
@@ -841,7 +896,7 @@ def my_results():
         print(f"Error: {e}")
         return jsonify({'error': str(e)}), 500
 
-# Запуск
+# ===== START =====
 if __name__ == '__main__':
     init_db()
     print("=" * 50)
