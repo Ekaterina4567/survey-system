@@ -6,6 +6,85 @@
     <title>Вход - SurveySystem</title>
     <link rel="stylesheet" href="/static/style.css">
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        .auth-container {
+            max-width: 420px;
+            margin: 2.5rem auto;
+            padding: 2rem 2.5rem;
+            background: var(--bg-card);
+            border-radius: var(--radius-lg);
+            border: 1px solid var(--border-card);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .auth-container h1 {
+            font-size: 1.6rem;
+            margin-bottom: 1.25rem;
+            text-align: center;
+            font-weight: 700;
+        }
+        
+        .auth-container .form-group {
+            margin-bottom: 1rem;
+        }
+        
+        .auth-container .form-group label {
+            font-size: 0.85rem;
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+            color: var(--text-primary);
+        }
+        
+        .auth-container .form-group input {
+            padding: 0.6rem 0.9rem;
+            font-size: 0.9rem;
+            border-radius: var(--radius-sm);
+        }
+        
+        .auth-container .btn {
+            padding: 0.6rem 1.2rem;
+            font-size: 0.9rem;
+        }
+        
+        .auth-footer {
+            margin-top: 1.25rem;
+            padding-top: 1rem;
+            font-size: 0.85rem;
+        }
+        
+        .auth-footer p {
+            margin: 0.3rem 0;
+        }
+        
+        .auth-footer .admin-hint {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+        
+        .message {
+            padding: 0.6rem 0.8rem;
+            font-size: 0.85rem;
+            margin-bottom: 0.8rem;
+        }
+        
+        .navbar {
+            padding: 0.8rem 2.5rem;
+        }
+        
+        .logo-img {
+            height: 38px;
+        }
+        
+        .logo-text {
+            font-size: 1.3rem;
+        }
+        
+        .nav-links a {
+            padding: 0.45rem 1rem;
+            font-size: 0.85rem;
+        }
+    </style>
 </head>
 <body>
     <nav class="navbar">
@@ -21,7 +100,7 @@
     </nav>
 
     <div class="auth-container">
-        <h1>🔐 Вход в систему</h1>
+        <h1>Вход в систему</h1>
         
         <form id="login-form" onsubmit="login(event)">
             <div class="form-group">
@@ -41,13 +120,20 @@
         
         <div class="auth-footer">
             <p>Нет аккаунта? <a href="/register_page">Зарегистрироваться</a></p>
-            <p style="margin-top: 0.5rem; font-size: 0.8rem; color: var(--text-muted);">
-                👨‍💼 Администратор: admin / admin123
-            </p>
+            <p class="admin-hint"></p>
         </div>
     </div>
 
     <script>
+        // Получаем параметры из URL
+        function getQueryParams() {
+            const params = new URLSearchParams(window.location.search);
+            return {
+                redirect: params.get('redirect'),
+                code: params.get('code')
+            };
+        }
+
         async function login(e) {
             e.preventDefault();
             const msgDiv = document.getElementById('message');
@@ -76,16 +162,8 @@
                     msgDiv.textContent = data.message;
                     msgDiv.style.display = 'block';
                     
-                    const urlParams = new URLSearchParams(window.location.search);
-                    const redirectPage = urlParams.get('redirect');
-                    const testCode = urlParams.get('code');
-                    
                     setTimeout(() => {
-                        if (redirectPage && testCode) {
-                            window.location.href = `/${redirectPage}?code=${testCode}`;
-                        } else {
-                            window.location.href = data.redirect || '/';
-                        }
+                        window.location.href = data.redirect || '/';
                     }, 1000);
                 } else {
                     msgDiv.className = 'message error';
@@ -97,6 +175,15 @@
                 msgDiv.textContent = 'Ошибка подключения к серверу';
                 msgDiv.style.display = 'block';
             }
+        }
+
+        // Если есть параметры в URL, показываем сообщение
+        const params = getQueryParams();
+        if (params.redirect && params.code) {
+            const msgDiv = document.getElementById('message');
+            msgDiv.className = 'message warning';
+            msgDiv.textContent = 'Для прохождения теста необходимо войти в систему';
+            msgDiv.style.display = 'block';
         }
     </script>
 </body>
