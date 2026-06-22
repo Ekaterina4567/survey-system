@@ -18,24 +18,19 @@ load_dotenv()
 app = Flask(__name__)
 app.secret_key = os.getenv('SECRET_KEY', secrets.token_hex(32))
 
-# PostgreSQL connection pool
 DATABASE_URL = os.getenv('DATABASE_URL', 'postgresql://survey_user:Fd25hZNEWtBryhp1j7b43xVVdgp7hz95@dpg-d8a7p66gvqtc73ck7c30-a.oregon-postgres.render.com/survey_db_ks4f')
 
-# Добавляем sslmode=require если нужно
 if '?' not in DATABASE_URL:
     DATABASE_URL += '?sslmode=require'
 
 def get_db():
-    """Получение соединения с PostgreSQL"""
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
     return conn
 
 def init_db():
-    """Инициализация базы данных PostgreSQL"""
     conn = get_db()
     cur = conn.cursor()
     
-    # Таблица пользователей
     cur.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id SERIAL PRIMARY KEY,
@@ -50,7 +45,6 @@ def init_db():
         )
     ''')
     
-    # Таблица тестов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS tests (
             id SERIAL PRIMARY KEY,
@@ -62,7 +56,6 @@ def init_db():
         )
     ''')
     
-    # Таблица вопросов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_questions (
             id SERIAL PRIMARY KEY,
@@ -76,7 +69,6 @@ def init_db():
         )
     ''')
     
-    # Таблица результатов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_results (
             id SERIAL PRIMARY KEY,
@@ -89,7 +81,6 @@ def init_db():
         )
     ''')
     
-    # Таблица детальных ответов
     cur.execute('''
         CREATE TABLE IF NOT EXISTS test_answers_detail (
             id SERIAL PRIMARY KEY,
@@ -102,7 +93,6 @@ def init_db():
         )
     ''')
     
-    # Создаём тестового админа (пароль: admin123)
     admin_hash = hashlib.sha256("admin123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
@@ -110,7 +100,6 @@ def init_db():
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'admin')
     ''', (admin_hash,))
     
-    # Создаём тестового преподавателя
     teacher_hash = hashlib.sha256("teacher123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
@@ -118,7 +107,6 @@ def init_db():
         WHERE NOT EXISTS (SELECT 1 FROM users WHERE username = 'teacher')
     ''', (teacher_hash,))
     
-    # Создаём тестового студента
     student_hash = hashlib.sha256("student123".encode()).hexdigest()
     cur.execute('''
         INSERT INTO users (username, email, password_hash, plain_password, role, full_name, is_active)
@@ -129,13 +117,13 @@ def init_db():
     conn.commit()
     cur.close()
     conn.close()
-    print("✅ PostgreSQL база данных инициализирована!")
+    print("PostgreSQL database initialized!")
 
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if 'user_id' not in session:
-            return jsonify({'error': 'Требуется авторизация'}), 401
+            return jsonify({'error': 'Authorization required'}), 401
         return f(*args, **kwargs)
     return decorated_function
 
@@ -178,7 +166,7 @@ def check_answer(question_type, user_answer, correct_answer):
     
     return False
 
-# ===== МАРШРУТЫ =====
+# ===== ROUTES =====
 
 @app.route('/')
 def index():
@@ -213,6 +201,10 @@ def edit_test_page(test_id):
 @app.route('/take_test')
 def take_test():
     if 'user_id' not in session:
+        # Сохраняем код теста в сессию для перенаправления после входа
+        code = request.args.get('code')
+        if code:
+            session['redirect_after_login'] = f'/take_test?code={code}'
         return redirect(url_for('login_page'))
     return render_template('take_test.html', user=session)
 
@@ -236,7 +228,6 @@ def teacher_dashboard():
 
 @app.route('/qr_redirect')
 def qr_redirect():
-    """Страница для редиректа через QR-код"""
     return render_template('qr_redirect.html')
 
 # ===== API =====
@@ -250,9 +241,10 @@ def register():
         password = data.get('password')
         full_name = data.get('full_name')
         role = data.get('role', 'student')
+        redirect_url = data.get('redirect_url')  # URL для перенаправления после регистрации
         
         if not all([username, email, password]):
-            return jsonify({'error': 'Заполните все обязательные поля!'}), 400
+            return jsonify({'error': 'Fill in all required fields!'}), 400
         
         conn = get_db()
         cur = conn.cursor()
@@ -261,7 +253,7 @@ def register():
         if cur.fetchone():
             cur.close()
             conn.close()
-            return jsonify({'error': 'Пользователь уже существует!'}), 400
+            return jsonify({'error': 'User already exists!'}), 400
         
         password_hash = hash_password(password)
         cur.execute('''
@@ -274,7 +266,18 @@ def register():
         cur.close()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Регистрация успешна!', 'user_id': user_id})
+        # Автоматически входим после регистрации
+        session['user_id'] = user_id
+        session['username'] = username
+        session['role'] = role
+        session['full_name'] = full_name
+        
+        return jsonify({
+            'success': True, 
+            'message': 'Registration successful!',
+            'user_id': user_id,
+            'redirect_url': redirect_url or '/'
+        })
     
     except Exception as e:
         print(f"Register Error: {e}")
@@ -301,18 +304,23 @@ def login():
         conn.close()
         
         if not user:
-            return jsonify({'error': 'Неверные учетные данные!'}), 401
+            return jsonify({'error': 'Invalid credentials!'}), 401
         
         session['user_id'] = user['id']
         session['username'] = user['username']
         session['role'] = user['role']
         session['full_name'] = user['full_name']
         
+        # Проверяем, есть ли сохраненный URL для перенаправления
+        redirect_url = session.pop('redirect_after_login', None)
+        if not redirect_url:
+            redirect_url = '/student_dashboard'
+        
         return jsonify({
             'success': True, 
-            'message': 'Вход выполнен!',
+            'message': 'Login successful!',
             'role': user['role'],
-            'redirect': '/student_dashboard'
+            'redirect': redirect_url
         })
     
     except Exception as e:
@@ -322,12 +330,17 @@ def login():
 @app.route('/logout')
 def logout():
     session.clear()
-    return jsonify({'success': True, 'message': 'Выход выполнен!'})
+    return jsonify({'success': True, 'message': 'Logout successful!'})
 
 @app.route('/check_auth')
 def check_auth():
     if 'user_id' in session:
-        return jsonify({'authenticated': True, 'role': session.get('role'), 'username': session.get('username')})
+        return jsonify({
+            'authenticated': True, 
+            'role': session.get('role'), 
+            'username': session.get('username'),
+            'full_name': session.get('full_name')
+        })
     return jsonify({'authenticated': False})
 
 @app.route('/api/create_test', methods=['POST'])
@@ -339,7 +352,7 @@ def create_test():
         questions = data.get('questions', [])
         
         if not title or not questions:
-            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
+            return jsonify({'error': 'Title and questions are required!'}), 400
         
         code = generate_unique_code()
         conn = get_db()
@@ -367,7 +380,7 @@ def create_test():
         
         conn.commit()
         
-        # Генерация QR кода
+        # QR code generation
         qr_data = f"{request.host_url}take_test?code={code}"
         qr_img = qrcode.make(qr_data)
         buffered = io.BytesIO()
@@ -379,7 +392,7 @@ def create_test():
         
         return jsonify({
             'success': True, 
-            'message': 'Тест создан!', 
+            'message': 'Test created!', 
             'code': code,
             'qr_code': qr_base64,
             'test_id': test_id
@@ -396,7 +409,7 @@ def get_test_by_code():
         code = data.get('code')
         
         if not code:
-            return jsonify({'error': 'Введите код теста'}), 400
+            return jsonify({'error': 'Enter test code'}), 400
         
         conn = get_db()
         cur = conn.cursor()
@@ -411,7 +424,7 @@ def get_test_by_code():
         if not test:
             cur.close()
             conn.close()
-            return jsonify({'error': 'Тест не найден'}), 404
+            return jsonify({'error': 'Test not found'}), 404
         
         cur.execute('''
             SELECT id, question_text, question_type, options, correct_answer, points, order_index
@@ -459,12 +472,11 @@ def submit_test():
         answers = data.get('answers', {})
         
         if not test_id:
-            return jsonify({'error': 'ID теста обязателен!'}), 400
+            return jsonify({'error': 'Test ID is required!'}), 400
         
         conn = get_db()
         cur = conn.cursor()
         
-        # Получаем вопросы теста
         cur.execute('''
             SELECT id, correct_answer, question_type, points, question_text
             FROM test_questions WHERE test_id = %s
@@ -488,15 +500,14 @@ def submit_test():
             detailed_results.append({
                 'question_id': q['id'],
                 'question_text': q['question_text'],
-                'user_answer': user_answer or '(не указан)',
-                'correct_answer': q['correct_answer'] or '(нет ответа)',
+                'user_answer': user_answer or '(not specified)',
+                'correct_answer': q['correct_answer'] or '(no answer)',
                 'points_earned': q['points'] if is_correct else 0,
                 'max_points': q['points'],
                 'is_correct': is_correct,
                 'question_type': q['question_type']
             })
         
-        # Сохраняем результат
         cur.execute('''
             INSERT INTO test_results (test_id, user_id, score, max_score, completed_at, answers_json)
             VALUES (%s, %s, %s, %s, CURRENT_TIMESTAMP, %s) RETURNING id
@@ -504,7 +515,6 @@ def submit_test():
         
         result_id = cur.fetchone()['id']
         
-        # Сохраняем детальные ответы
         for detail in detailed_results:
             cur.execute('''
                 INSERT INTO test_answers_detail (result_id, question_id, user_answer, is_correct, points_earned)
@@ -519,7 +529,7 @@ def submit_test():
         
         return jsonify({
             'success': True, 
-            'message': 'Тест пройден! Результат сохранен.',
+            'message': 'Test completed! Result saved.',
             'score': total_score,
             'max_score': max_possible_score,
             'percentage': round(percentage, 1),
@@ -550,7 +560,7 @@ def get_my_results_detail(result_id):
         if not result:
             cur.close()
             conn.close()
-            return jsonify({'error': 'Результат не найден'}), 404
+            return jsonify({'error': 'Result not found'}), 404
         
         cur.execute('''
             SELECT tad.*, tq.question_text, tq.question_type, tq.points, tq.correct_answer
@@ -641,7 +651,7 @@ def get_test_for_edit(test_id):
         if not test:
             cur.close()
             conn.close()
-            return jsonify({'error': 'Тест не найден или у вас нет прав'}), 404
+            return jsonify({'error': 'Test not found or no permissions'}), 404
         
         cur.execute('''
             SELECT id, question_text, question_type, options, correct_answer, points, order_index
@@ -682,7 +692,7 @@ def update_test(test_id):
         questions = data.get('questions', [])
         
         if not title or not questions:
-            return jsonify({'error': 'Название и вопросы обязательны!'}), 400
+            return jsonify({'error': 'Title and questions are required!'}), 400
         
         conn = get_db()
         cur = conn.cursor()
@@ -694,7 +704,7 @@ def update_test(test_id):
         if not cur.fetchone():
             cur.close()
             conn.close()
-            return jsonify({'error': 'У вас нет прав на редактирование этого теста'}), 403
+            return jsonify({'error': 'No permission to edit this test'}), 403
         
         cur.execute("UPDATE tests SET title = %s WHERE id = %s", (title, test_id))
         cur.execute("DELETE FROM test_questions WHERE test_id = %s", (test_id,))
@@ -716,7 +726,7 @@ def update_test(test_id):
         cur.close()
         conn.close()
         
-        return jsonify({'success': True, 'message': 'Тест обновлен!'})
+        return jsonify({'success': True, 'message': 'Test updated!'})
     
     except Exception as e:
         print(f"Error updating test: {e}")
@@ -729,19 +739,17 @@ def get_test_results(test_id):
         conn = get_db()
         cur = conn.cursor()
         
-        # Проверяем, что пользователь - создатель теста
         cur.execute('''
             SELECT created_by_user_id FROM tests WHERE id = %s
         ''', (test_id,))
         test = cur.fetchone()
         
         if not test:
-            return jsonify({'error': 'Тест не найден'}), 404
+            return jsonify({'error': 'Test not found'}), 404
             
         if test['created_by_user_id'] != session['user_id'] and session.get('role') != 'admin':
-            return jsonify({'error': 'Нет прав для просмотра результатов'}), 403
+            return jsonify({'error': 'No permission to view results'}), 403
         
-        # Получаем результаты с ФИО студентов
         cur.execute('''
             SELECT 
                 tr.id,
@@ -760,7 +768,6 @@ def get_test_results(test_id):
         
         results = cur.fetchall()
         
-        # Статистика по тесту
         cur.execute('''
             SELECT 
                 COUNT(*) as total_attempts,
@@ -771,7 +778,6 @@ def get_test_results(test_id):
         ''', (test_id,))
         stats = cur.fetchone()
         
-        # Информация о тесте
         cur.execute('SELECT title FROM tests WHERE id = %s', (test_id,))
         test_info = cur.fetchone()
         
@@ -839,10 +845,10 @@ def my_results():
 if __name__ == '__main__':
     init_db()
     print("=" * 50)
-    print("🚀 Server: http://localhost:3000")
-    print("📁 Database: PostgreSQL")
-    print("👨‍💼 Admin login: admin / admin123")
-    print("👨‍🏫 Teacher login: teacher / teacher123")
-    print("👨‍🎓 Student login: student / student123")
+    print("Server: http://localhost:3000")
+    print("Database: PostgreSQL")
+    print("Admin login: admin / admin123")
+    print("Teacher login: teacher / teacher123")
+    print("Student login: student / student123")
     print("=" * 50)
     app.run(debug=False, port=3000, host='0.0.0.0')
